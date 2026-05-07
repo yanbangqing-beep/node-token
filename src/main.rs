@@ -2,6 +2,7 @@
 //!
 //! 运行在个人 PC 上，负责连接本机 Ollama、主动轮询任务并提交结果。
 
+mod client;
 mod config;
 mod error;
 mod protocol;
@@ -15,7 +16,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("node_token=info".parse()?)
+                .add_directive("node_token=info".parse()?),
         )
         .init();
 
@@ -37,6 +38,6 @@ async fn main() -> Result<()> {
     // - 等待退出信号
 
     info!("node-token initialized successfully");
-    
+
     Ok(())
 }

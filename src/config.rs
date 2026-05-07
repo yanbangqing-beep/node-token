@@ -9,27 +9,28 @@ use std::path::PathBuf;
 
 /// node-token 配置结构
 #[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)] // 部分字段在后续阶段使用
 pub struct NodeTokenConfig {
     /// KeyCompute 服务端 URL
     pub server_url: String,
-    
+
     /// 注册 token（从 KeyCompute 配置获取）
     pub registration_token: String,
-    
+
     /// 客户端实例 ID（建议固定以便重启复用）
     pub client_instance_id: String,
-    
+
     /// 节点显示名称
     pub display_name: String,
-    
+
     /// 本地 Ollama URL，默认 http://localhost:11434
     #[serde(default = "default_ollama_url")]
     pub ollama_url: String,
-    
+
     /// 心跳间隔（秒），默认 30
     #[serde(default = "default_heartbeat_interval")]
     pub heartbeat_interval_secs: u64,
-    
+
     /// 本地数据目录，默认 ~/.local/share/node-token
     #[serde(default = "default_data_dir")]
     pub data_dir: Option<String>,
@@ -44,15 +45,12 @@ fn default_heartbeat_interval() -> u64 {
 }
 
 fn default_data_dir() -> Option<String> {
-    dirs::data_local_dir().map(|d| {
-        d.join("node-token")
-            .to_string_lossy()
-            .to_string()
-    })
+    dirs::data_local_dir().map(|d| d.join("node-token").to_string_lossy().to_string())
 }
 
 impl NodeTokenConfig {
     /// 获取数据目录路径
+    #[allow(dead_code)] // 在后续阶段使用
     pub fn data_dir_path(&self) -> PathBuf {
         self.data_dir
             .as_ref()
@@ -66,14 +64,15 @@ impl NodeTokenConfig {
 }
 
 /// 加载配置
-/// 
+///
 /// 加载优先级：
 /// 1. 环境变量（前缀 NODE_TOKEN_）
 /// 2. 配置文件（config.toml 或 NODE_TOKEN_CONFIG 指定的路径）
 pub fn load_config() -> Result<NodeTokenConfig> {
     // 确定配置文件路径
-    let config_path = std::env::var("NODE_TOKEN_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
-    
+    let config_path =
+        std::env::var("NODE_TOKEN_CONFIG").unwrap_or_else(|_| "config.toml".to_string());
+
     let builder = Config::builder()
         // 默认值
         .set_default("server_url", "http://localhost:3000")?
@@ -88,15 +87,15 @@ pub fn load_config() -> Result<NodeTokenConfig> {
         .add_source(
             Environment::with_prefix("NODE_TOKEN")
                 .separator("__")
-                .try_parsing(true)
+                .try_parsing(true),
         );
-    
+
     let config = builder.build()?;
-    
+
     let node_config: NodeTokenConfig = config
         .try_deserialize()
         .map_err(|e: ConfigError| anyhow::anyhow!("Failed to deserialize config: {}", e))?;
-    
+
     // 验证必需字段
     if node_config.server_url.is_empty() {
         anyhow::bail!("server_url is required");
@@ -110,14 +109,14 @@ pub fn load_config() -> Result<NodeTokenConfig> {
     if node_config.display_name.is_empty() {
         anyhow::bail!("display_name is required");
     }
-    
+
     Ok(node_config)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_default_config() {
         // 测试默认值是否正确
@@ -130,11 +129,11 @@ mod tests {
             heartbeat_interval_secs: default_heartbeat_interval(),
             data_dir: None,
         };
-        
+
         assert_eq!(config.ollama_url, "http://localhost:11434");
         assert_eq!(config.heartbeat_interval_secs, 30);
     }
-    
+
     #[test]
     fn test_data_dir_path() {
         let config = NodeTokenConfig {
@@ -146,7 +145,10 @@ mod tests {
             heartbeat_interval_secs: 30,
             data_dir: Some("/tmp/test-node-token".to_string()),
         };
-        
-        assert_eq!(config.data_dir_path(), PathBuf::from("/tmp/test-node-token"));
+
+        assert_eq!(
+            config.data_dir_path(),
+            PathBuf::from("/tmp/test-node-token")
+        );
     }
 }

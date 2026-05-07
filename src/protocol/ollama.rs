@@ -25,6 +25,7 @@ pub struct OllamaMessage {
 }
 
 impl OllamaMessage {
+    #[allow(dead_code)] // 在后续阶段使用
     pub fn new(role: impl Into<String>, content: impl Into<String>) -> Self {
         Self {
             role: role.into(),
@@ -35,6 +36,7 @@ impl OllamaMessage {
 
 /// Ollama chat 响应
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)] // 部分字段在后续阶段使用
 pub struct OllamaChatResponse {
     /// 模型名称
     pub model: String,
@@ -67,6 +69,7 @@ pub struct OllamaModelListResponse {
 
 /// Ollama 模型信息
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)] // 部分字段在后续阶段使用
 pub struct OllamaModelInfo {
     /// 模型名称
     pub name: String,

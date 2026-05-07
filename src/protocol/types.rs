@@ -275,6 +275,7 @@ pub struct Message {
 }
 
 impl Message {
+    #[allow(dead_code)] // 在后续阶段使用
     pub fn new(role: MessageRole, content: impl Into<String>) -> Self {
         Self {
             role,
@@ -282,18 +283,22 @@ impl Message {
         }
     }
 
+    #[allow(dead_code)] // 在后续阶段使用
     pub fn system(content: impl Into<String>) -> Self {
         Self::new(MessageRole::System, content)
     }
 
+    #[allow(dead_code)] // 在后续阶段使用
     pub fn user(content: impl Into<String>) -> Self {
         Self::new(MessageRole::User, content)
     }
 
+    #[allow(dead_code)] // 在后续阶段使用
     pub fn assistant(content: impl Into<String>) -> Self {
         Self::new(MessageRole::Assistant, content)
     }
 
+    #[allow(dead_code)] // 在后续阶段使用
     pub fn tool(content: impl Into<String>) -> Self {
         Self::new(MessageRole::Tool, content)
     }
@@ -319,6 +324,7 @@ pub struct ChatCompletionRequest {
 }
 
 impl ChatCompletionRequest {
+    #[allow(dead_code)] // 在后续阶段使用
     pub fn new(model: impl Into<String>, messages: Vec<Message>) -> Self {
         Self {
             model: model.into(),
@@ -385,10 +391,7 @@ mod tests {
 
     #[test]
     fn test_chat_completion_request_serialize() {
-        let req = ChatCompletionRequest::new(
-            "deepseek-chat",
-            vec![Message::user("Hello")],
-        );
+        let req = ChatCompletionRequest::new("deepseek-chat", vec![Message::user("Hello")]);
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"model\":\"deepseek-chat\""));
         assert!(json.contains("\"role\":\"user\""));
