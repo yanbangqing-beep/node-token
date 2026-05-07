@@ -6,6 +6,7 @@ mod client;
 mod config;
 mod error;
 mod protocol;
+mod storage;
 
 use anyhow::Result;
 use tracing::info;
