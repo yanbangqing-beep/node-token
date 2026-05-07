@@ -1,0 +1,24 @@
+# node-token 配置示例
+# 复制为 config.toml 并填写实际值
+
+# KeyCompute 服务端 URL（必需）
+server_url = "http://localhost:3000"
+
+# 注册 token（从 KeyCompute 配置获取，必需）
+registration_token = "your-registration-token"
+
+# 客户端实例 ID（建议固定以便重启复用，必需）
+# 可以使用 hostname 或自定义标识
+client_instance_id = "my-pc-node-001"
+
+# 节点显示名称（必需）
+display_name = "My PC Node"
+
+# 本地 Ollama URL（可选，默认 http://localhost:11434）
+ollama_url = "http://localhost:11434"
+
+# 心跳间隔（秒，可选，默认 30）
+heartbeat_interval_secs = 30
+
+# 本地数据目录（可选，默认 ~/.local/share/node-token）
+# data_dir = "/path/to/data"
