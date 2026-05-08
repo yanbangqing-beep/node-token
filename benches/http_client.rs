@@ -38,7 +38,7 @@ fn bench_client_creation(c: &mut Criterion) {
 /// 基准测试：注册请求构建
 fn bench_register_request_building(c: &mut Criterion) {
     c.bench_function("http/build_register_request", |b| {
-        b.iter(|| create_register_request())
+        b.iter(create_register_request)
     });
 }
 

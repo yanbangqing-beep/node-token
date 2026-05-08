@@ -118,7 +118,7 @@ pub fn load_config() -> Result<NodeTokenConfig> {
         .set_default("server_url", "http://localhost:3000")?
         .set_default("registration_token", "")?
         .set_default("client_instance_id", "")?
-        .set_default("display_name", "My KeyComputeC Node")?
+        .set_default("display_name", "My KeyCompute Node")?
         .set_default("ollama_url", "http://localhost:11434")?
         .set_default("heartbeat_interval_secs", 30)?
         .set_default("excluded_poll_check_interval_secs", 30)?

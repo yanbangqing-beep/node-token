@@ -3,7 +3,7 @@ name = "node-token"
 version = "0.1.0"
 edition = "2024"
 description = "KeyCompute node-token client for personal PC nodes"
-license = "MIT"
+license = "GPL-3.0"
 
 [workspace]
 

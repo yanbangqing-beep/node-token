@@ -1,0 +1,101 @@
+# =============================================================================
+# docker-compose.yml — node-token 个人 PC 节点客户端编排
+#
+# 服务拓扑：
+#   ollama            — Ollama 本地模型服务
+#   ollama-model-init — 启动后自动拉取并预热指定模型
+#   node-token        — 节点客户端（轮询任务并在本机 Ollama 执行）
+#
+# 使用方法：
+#   cp .env.example .env                 # 编辑填入注册 token
+#   cp config.example.toml config.toml   # 可选：编辑填入本地运行配置
+#   docker compose up -d                 # 启动所有服务
+#   docker compose logs -f               # 实时查看日志
+# =============================================================================
+
+services:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Ollama — 本地模型服务
+  # ─────────────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nodetoken-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      # 控制模型在内存中的保活时间；如需常驻可设为 -1
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ollama-model-init — 自动拉取并预热指定模型
+  # ─────────────────────────────────────────────────────────────────────────
+  ollama-model-init:
+    image: ollama/ollama:latest
+    container_name: nodetoken-ollama-init
+    restart: on-failure
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma3:270m}
+      OLLAMA_WARMUP_PROMPT: ${OLLAMA_WARMUP_PROMPT:-ready}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - ollama pull "$$OLLAMA_MODEL" && ollama run "$$OLLAMA_MODEL" "$$OLLAMA_WARMUP_PROMPT" >/dev/null
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # node-token — 节点客户端
+  # ─────────────────────────────────────────────────────────────────────────
+  node-token:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    pull_policy: build
+    image: node-token:latest
+    container_name: nodetoken-client
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      # KeyCompute 服务端配置
+      NODE_TOKEN__SERVER_URL: ${NODE_TOKEN__SERVER_URL:-http://localhost:3000}
+      NODE_TOKEN__REGISTRATION_TOKEN: ${NODE_TOKEN__REGISTRATION_TOKEN}
+      NODE_TOKEN__CLIENT_INSTANCE_ID: ${NODE_TOKEN__CLIENT_INSTANCE_ID:-my-pc-node-001}
+      NODE_TOKEN__DISPLAY_NAME: ${NODE_TOKEN__DISPLAY_NAME:-My PC Node}
+      # 本地 Ollama 连接
+      NODE_TOKEN__OLLAMA_URL: ${NODE_TOKEN__OLLAMA_URL:-http://ollama:11434}
+      # 心跳间隔（秒）
+      NODE_TOKEN__HEARTBEAT_INTERVAL_SECS: ${NODE_TOKEN__HEARTBEAT_INTERVAL_SECS:-30}
+      NODE_TOKEN__EXCLUDED_POLL_CHECK_INTERVAL_SECS: ${NODE_TOKEN__EXCLUDED_POLL_CHECK_INTERVAL_SECS:-30}
+      # 数据持久化目录
+      NODE_TOKEN__DATA_DIR: "/data"
+    volumes:
+      - node_token_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "1.0"
+
+# =============================================================================
+# 持久化卷
+# =============================================================================
+volumes:
+  ollama_data:
+    driver: local
+  node_token_data:
+    driver: local
