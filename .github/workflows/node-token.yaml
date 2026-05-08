@@ -101,7 +101,7 @@ jobs:
             ${{ runner.os }}-bench-
 
       - name: Run benchmarks
-        run: cargo bench -- --sample-size 100
+        run: cargo bench --bench protocol_serialization -- --sample-size 100 && cargo bench --bench http_client -- --sample-size 100 && cargo bench --bench storage_operations -- --sample-size 100
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
