@@ -17,6 +17,6 @@ pub use executor::TaskExecutor;
 #[allow(unused_imports)] // 在阶段五使用
 pub use heartbeat::heartbeat_loop;
 #[allow(unused_imports)] // 在阶段五使用
-pub use poll::poll_loop;
+pub use poll::{PollLoopConfig, poll_loop};
 #[allow(unused_imports)] // 在阶段五使用
 pub use register::{register_node, try_load_session};

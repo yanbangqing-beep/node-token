@@ -14,7 +14,7 @@ use tracing::warn;
 use node_token::client::{KeyComputeClient, OllamaClient};
 use node_token::load_config;
 use node_token::runtime::{
-    TaskExecutor, heartbeat_loop, poll_loop, register_node, try_load_session,
+    PollLoopConfig, TaskExecutor, heartbeat_loop, poll_loop, register_node, try_load_session,
 };
 use node_token::storage::LocalStorage;
 
@@ -99,7 +99,12 @@ async fn main() -> Result<()> {
     // 因为心跳循环第一次立即触发，2 秒足够获取初始状态
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    // 8. 启动轮询循环（如果节点未 excluded）
+    // 8. 创建并发控制信号量
+    let max_concurrent_tasks = config.max_concurrent_tasks;
+    let concurrency_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_tasks));
+    info!("Concurrency limit set to {} tasks", max_concurrent_tasks);
+
+    // 9. 启动轮询循环（如果节点未 excluded）
     let executor = Arc::new(TaskExecutor::new(
         client.clone(),
         ollama_client.clone(),
@@ -110,9 +115,11 @@ async fn main() -> Result<()> {
     let poll_executor = executor;
     let poll_excluded = is_excluded.clone();
     let poll_stop = stop_signal.clone();
-    let poll_excluded_check_interval =
-        Duration::from_secs(config.excluded_poll_check_interval_secs);
-    let poll_timeout_secs = session.poll_timeout_secs;
+    let poll_config = PollLoopConfig {
+        excluded_check_interval: Duration::from_secs(config.excluded_poll_check_interval_secs),
+        poll_timeout_secs: session.poll_timeout_secs,
+        concurrency_semaphore,
+    };
     let poll_handle = tokio::spawn(async move {
         poll_loop(
             &poll_client,
@@ -120,8 +127,7 @@ async fn main() -> Result<()> {
             poll_executor,
             poll_excluded,
             poll_stop,
-            poll_excluded_check_interval,
-            poll_timeout_secs,
+            poll_config,
         )
         .await;
     });

@@ -67,6 +67,11 @@ pub struct NodeTokenConfig {
     #[serde(default = "default_excluded_poll_check_interval")]
     pub excluded_poll_check_interval_secs: u64,
 
+    /// 最大并发任务数，默认 2
+    /// 控制同时执行的任务数量，防止过多任务并发导致资源耗尽
+    #[serde(default = "default_max_concurrent_tasks")]
+    pub max_concurrent_tasks: usize,
+
     /// 本地数据目录，默认 ~/.local/share/node-token
     #[serde(default = "default_data_dir")]
     pub data_dir: Option<String>,
@@ -82,6 +87,10 @@ fn default_heartbeat_interval() -> u64 {
 
 fn default_excluded_poll_check_interval() -> u64 {
     30
+}
+
+fn default_max_concurrent_tasks() -> usize {
+    2
 }
 
 fn default_data_dir() -> Option<String> {
@@ -122,6 +131,7 @@ pub fn load_config() -> Result<NodeTokenConfig> {
         .set_default("ollama_url", "http://localhost:11434")?
         .set_default("heartbeat_interval_secs", 30)?
         .set_default("excluded_poll_check_interval_secs", 30)?
+        .set_default("max_concurrent_tasks", 2)?
         // 从配置文件加载
         .add_source(File::with_name(&config_path).required(false))
         // 从环境变量加载（优先级最高）
@@ -150,6 +160,9 @@ pub fn load_config() -> Result<NodeTokenConfig> {
     if node_config.display_name.is_empty() {
         anyhow::bail!("display_name is required");
     }
+    if node_config.max_concurrent_tasks == 0 {
+        anyhow::bail!("max_concurrent_tasks must be greater than 0");
+    }
 
     Ok(node_config)
 }
@@ -169,12 +182,14 @@ mod tests {
             ollama_url: default_ollama_url(),
             heartbeat_interval_secs: default_heartbeat_interval(),
             excluded_poll_check_interval_secs: default_excluded_poll_check_interval(),
+            max_concurrent_tasks: default_max_concurrent_tasks(),
             data_dir: None,
         };
 
         assert_eq!(config.ollama_url, "http://localhost:11434");
         assert_eq!(config.heartbeat_interval_secs, 30);
         assert_eq!(config.excluded_poll_check_interval_secs, 30);
+        assert_eq!(config.max_concurrent_tasks, 2);
     }
 
     #[test]
@@ -187,6 +202,7 @@ mod tests {
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: Some("/tmp/test-node-token".to_string()),
         };
 
@@ -209,6 +225,7 @@ display_name = "My PC Node"
 ollama_url = "http://localhost:11434"
 heartbeat_interval_secs = 60
 excluded_poll_check_interval_secs = 60
+max_concurrent_tasks = 4
 "#;
         std::fs::write(&config_path, config_content).unwrap();
 
@@ -238,6 +255,7 @@ excluded_poll_check_interval_secs = 60
         assert_eq!(config.ollama_url, "http://localhost:11434");
         assert_eq!(config.heartbeat_interval_secs, 60);
         assert_eq!(config.excluded_poll_check_interval_secs, 60);
+        assert_eq!(config.max_concurrent_tasks, 4);
     }
 
     #[test]
@@ -250,6 +268,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://192.168.1.100:11434".to_string(),
             heartbeat_interval_secs: 45,
             excluded_poll_check_interval_secs: 45,
+            max_concurrent_tasks: 5,
             data_dir: Some("/custom/data/dir".to_string()),
         };
 
@@ -260,6 +279,7 @@ excluded_poll_check_interval_secs = 60
         assert_eq!(config.ollama_url, "http://192.168.1.100:11434");
         assert_eq!(config.heartbeat_interval_secs, 45);
         assert_eq!(config.excluded_poll_check_interval_secs, 45);
+        assert_eq!(config.max_concurrent_tasks, 5);
         assert_eq!(config.data_dir, Some("/custom/data/dir".to_string()));
     }
 
@@ -273,6 +293,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
@@ -294,6 +315,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
@@ -312,6 +334,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
@@ -331,6 +354,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
@@ -349,6 +373,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
@@ -370,6 +395,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
@@ -386,6 +412,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
@@ -406,6 +433,7 @@ excluded_poll_check_interval_secs = 60
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: Some("/custom/path/to/data".to_string()),
         };
 

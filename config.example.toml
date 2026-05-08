@@ -24,5 +24,9 @@ heartbeat_interval_secs = 30
 # 节点被 excluded 后，poll 循环定期检查是否恢复
 excluded_poll_check_interval_secs = 30
 
+# 最大并发任务数（可选，默认 2）
+# 控制同时执行的任务数量，防止过多任务并发导致资源耗尽
+max_concurrent_tasks = 2
+
 # 本地数据目录（可选，默认 ~/.local/share/node-token）
 # data_dir = "/path/to/data"

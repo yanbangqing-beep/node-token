@@ -5,12 +5,23 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use tokio::sync::Semaphore;
 use tracing::{debug, error, info};
 
 use crate::client::KeyComputeClient;
 use crate::protocol::types::NodePollRequest;
 use crate::runtime::executor::TaskExecutor;
 use crate::storage::SessionData;
+
+/// Poll 循环配置参数
+pub struct PollLoopConfig {
+    /// Excluded 节点 poll 检查间隔
+    pub excluded_check_interval: Duration,
+    /// 服务端轮询超时（秒）
+    pub poll_timeout_secs: u64,
+    /// 并发控制信号量
+    pub concurrency_semaphore: Arc<Semaphore>,
+}
 
 /// 轮询循环
 ///
@@ -20,8 +31,7 @@ use crate::storage::SessionData;
 /// - `executor`: 任务执行器
 /// - `is_excluded`: 节点排除标志（由 heartbeat 循环更新）
 /// - `stop_signal`: 退出信号
-/// - `excluded_check_interval`: Excluded 节点 poll 检查间隔
-/// - `poll_timeout_secs`: 服务端轮询超时（秒），用于计算无任务时的等待间隔
+/// - `config`: Poll 循环配置参数
 ///
 /// # 行为
 /// - 定期调用 poll API 领取任务
@@ -29,6 +39,7 @@ use crate::storage::SessionData;
 /// - 服务端返回 retry_after_ms 时等待指定时间
 /// - 网络错误指数退避（AGENTS.md 第 724 行）
 /// - 无任务时等待间隔 = poll_timeout_secs / 10（默认 1 秒）
+/// - 领取任务前需要获取并发许可，达到上限时阻塞等待
 #[allow(dead_code)] // 在阶段五使用
 pub async fn poll_loop(
     client: &KeyComputeClient,
@@ -36,8 +47,7 @@ pub async fn poll_loop(
     executor: Arc<TaskExecutor>,
     is_excluded: Arc<AtomicBool>,
     stop_signal: Arc<AtomicBool>,
-    excluded_check_interval: Duration,
-    poll_timeout_secs: u64,
+    config: PollLoopConfig,
 ) {
     info!("Starting poll loop");
 
@@ -46,8 +56,8 @@ pub async fn poll_loop(
     let max_backoff = Duration::from_secs(16);
 
     // 计算无任务时的等待间隔：poll_timeout_secs / 10，默认 1 秒
-    let empty_poll_interval = if poll_timeout_secs > 0 {
-        Duration::from_secs(poll_timeout_secs / 10)
+    let empty_poll_interval = if config.poll_timeout_secs > 0 {
+        Duration::from_secs(config.poll_timeout_secs / 10)
     } else {
         Duration::from_secs(1) // 默认 1 秒
     };
@@ -55,7 +65,7 @@ pub async fn poll_loop(
     info!(
         "Poll empty interval: {}s (poll_timeout_secs={})",
         empty_poll_interval.as_secs(),
-        poll_timeout_secs
+        config.poll_timeout_secs
     );
 
     while !stop_signal.load(Ordering::Relaxed) {
@@ -63,7 +73,7 @@ pub async fn poll_loop(
         if is_excluded.load(Ordering::Relaxed) {
             info!("Node excluded, stopping poll (will continue heartbeat only)");
             // 按配置的检查间隔等待后，检查是否恢复
-            tokio::time::sleep(excluded_check_interval).await;
+            tokio::time::sleep(config.excluded_check_interval).await;
             continue;
         }
 
@@ -84,11 +94,40 @@ pub async fn poll_loop(
                         task.task_id, task.model, task.deadline_unix_ms
                     );
 
+                    // 获取并发许可（如果达到上限会阻塞等待）
+                    if config.concurrency_semaphore.available_permits() == 0 {
+                        info!("Concurrency limit reached, waiting for available permit...");
+                    }
+
+                    // acquire_owned() 返回拥有所有权的 Permit，可以在 tokio::spawn 中使用
+                    // 只在 Semaphore 被 close 时返回 Err，正常情况下不会失败
+                    let permit = match config.concurrency_semaphore.clone().acquire_owned().await {
+                        Ok(permit) => permit,
+                        Err(_) => {
+                            // Semaphore 被关闭，正常退出 poll 循环
+                            debug!("Semaphore closed, stopping poll loop");
+                            return;
+                        }
+                    };
+
+                    debug!(
+                        "Acquired concurrency permit, available permits: {}",
+                        config.concurrency_semaphore.available_permits()
+                    );
+
                     // 收到任务，提交到执行器
                     // 使用 Arc 克隆 executor，让 executor 在后台执行
                     let executor_clone = executor.clone();
+                    let semaphore = config.concurrency_semaphore.clone();
                     tokio::spawn(async move {
+                        // 执行任务
                         executor_clone.execute(task).await;
+                        // 任务完成后释放许可（通过 drop permit 实现）
+                        drop(permit);
+                        debug!(
+                            "Task completed, released concurrency permit, available permits: {}",
+                            semaphore.available_permits()
+                        );
                     });
                 } else if let Some(retry_ms) = resp.retry_after_ms {
                     debug!("No task available, retry_after={}ms", retry_ms);

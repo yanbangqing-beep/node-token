@@ -188,6 +188,7 @@ mod tests {
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
@@ -279,6 +280,7 @@ mod tests {
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
             excluded_poll_check_interval_secs: 30,
+            max_concurrent_tasks: 2,
             data_dir: None,
         };
 
