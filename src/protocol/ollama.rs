@@ -86,18 +86,37 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 验证 OllamaChatRequest 的 JSON 序列化符合 Ollama API 规范。
+    /// 确保 model、messages、stream 字段正确序列化。
     fn test_ollama_chat_request_serialize() {
         let req = OllamaChatRequest {
             model: "deepseek-r1".to_string(),
-            messages: vec![OllamaMessage::new("user", "Hello")],
+            messages: vec![
+                OllamaMessage::new("system", "You are a helpful assistant"),
+                OllamaMessage::new("user", "Hello"),
+            ],
             stream: false,
         };
         let json = serde_json::to_string(&req).unwrap();
+
+        // 反序列化验证（注意：OllamaChatRequest 没有实现 Deserialize，
+        // 所以我们验证 JSON 字符串包含预期的字段）
         assert!(json.contains("\"model\":\"deepseek-r1\""));
         assert!(json.contains("\"stream\":false"));
+        assert!(json.contains("\"messages\""));
+        assert!(json.contains("\"role\":\"system\""));
+        assert!(json.contains("\"role\":\"user\""));
+        assert!(json.contains("You are a helpful assistant"));
+        assert!(json.contains("Hello"));
+
+        // 验证消息数量
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["messages"].as_array().unwrap().len(), 2);
     }
 
     #[test]
+    /// 验证 OllamaChatResponse 的 JSON 反序列化正确性。
+    /// 覆盖完整字段和可选字段（带 default 属性）。
     fn test_ollama_chat_response_deserialize() {
         let json = r#"{
             "model": "deepseek-r1",
@@ -113,21 +132,90 @@ mod tests {
         }"#;
         let resp: OllamaChatResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.model, "deepseek-r1");
+        assert_eq!(resp.created_at, "2024-01-01T00:00:00Z");
+        assert_eq!(resp.message.role, "assistant");
         assert_eq!(resp.message.content, "Hello!");
+        assert!(resp.done);
+        assert_eq!(resp.total_duration, 1000000000);
         assert_eq!(resp.prompt_eval_count, 10);
         assert_eq!(resp.eval_count, 20);
     }
 
     #[test]
+    /// 验证 OllamaChatResponse 反序列化时可选字段的默认值处理。
+    fn test_ollama_chat_response_default_fields() {
+        let json = r#"{
+            "model": "llama3",
+            "created_at": "2024-01-01T00:00:00Z",
+            "message": {
+                "role": "assistant",
+                "content": "Hi"
+            },
+            "done": true
+        }"#;
+        let resp: OllamaChatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.model, "llama3");
+        // 验证 default 字段使用默认值
+        assert_eq!(resp.total_duration, 0);
+        assert_eq!(resp.load_duration, 0);
+        assert_eq!(resp.prompt_eval_count, 0);
+        assert_eq!(resp.eval_count, 0);
+    }
+
+    #[test]
+    /// 验证 OllamaModelListResponse 的 JSON 反序列化正确性。
     fn test_ollama_model_list_deserialize() {
         let json = r#"{
             "models": [
-                {"name": "deepseek-r1:latest", "size": 4000000000},
-                {"name": "llama2:latest", "size": 3800000000}
+                {"name": "deepseek-r1:latest", "size": 4000000000, "modified_at": "2024-01-01T00:00:00Z"},
+                {"name": "llama2:latest", "size": 3800000000, "modified_at": "2024-01-02T00:00:00Z"}
             ]
         }"#;
         let resp: OllamaModelListResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.models.len(), 2);
         assert_eq!(resp.models[0].name, "deepseek-r1:latest");
+        assert_eq!(resp.models[0].size, 4000000000);
+        assert_eq!(resp.models[1].name, "llama2:latest");
+        assert_eq!(resp.models[1].size, 3800000000);
+    }
+
+    #[test]
+    /// 验证 OllamaModelInfo 反序列化时可选字段的默认值处理。
+    fn test_ollama_model_info_default_fields() {
+        let json = r#"{
+            "models": [
+                {"name": "deepseek-r1:latest"}
+            ]
+        }"#;
+        let resp: OllamaModelListResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.models.len(), 1);
+        assert_eq!(resp.models[0].name, "deepseek-r1:latest");
+        // 验证 default 字段使用默认值
+        assert_eq!(resp.models[0].size, 0);
+        assert_eq!(resp.models[0].modified_at, "");
+    }
+
+    #[test]
+    /// 验证 OllamaMessage 的构造函数和序列化。
+    fn test_ollama_message_helpers() {
+        let msg = OllamaMessage::new("user", "Hello, world!");
+        assert_eq!(msg.role, "user");
+        assert_eq!(msg.content, "Hello, world!");
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: OllamaMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.role, "user");
+        assert_eq!(parsed.content, "Hello, world!");
+    }
+
+    #[test]
+    /// 验证 OllamaMessage 支持多种角色。
+    fn test_ollama_message_roles() {
+        let roles = vec!["system", "user", "assistant", "tool"];
+
+        for role in roles {
+            let msg = OllamaMessage::new(role, "test content");
+            assert_eq!(msg.role, role);
+        }
     }
 }

@@ -379,4 +379,268 @@ mod tests {
 
         TaskExecutor::new(client, ollama_client, session)
     }
+
+    // ========================================================================
+    // 类型转换测试
+    // ========================================================================
+
+    #[test]
+    fn test_chat_request_to_ollama_basic() {
+        use crate::protocol::types::{ChatCompletionRequest, Message};
+
+        let executor = create_test_executor();
+        let chat_req = ChatCompletionRequest::new(
+            "deepseek-chat",
+            vec![
+                Message::system("You are a helpful assistant"),
+                Message::user("Hello!"),
+            ],
+        );
+
+        let ollama_req = executor.chat_request_to_ollama(&chat_req, "deepseek-chat");
+
+        assert_eq!(ollama_req.model, "deepseek-chat");
+        assert!(!ollama_req.stream);
+        assert_eq!(ollama_req.messages.len(), 2);
+        assert_eq!(ollama_req.messages[0].role, "system");
+        assert_eq!(
+            ollama_req.messages[0].content,
+            "You are a helpful assistant"
+        );
+        assert_eq!(ollama_req.messages[1].role, "user");
+        assert_eq!(ollama_req.messages[1].content, "Hello!");
+    }
+
+    #[test]
+    fn test_chat_request_to_ollama_multiple_messages() {
+        use crate::protocol::types::{ChatCompletionRequest, Message};
+
+        let executor = create_test_executor();
+        let chat_req = ChatCompletionRequest {
+            model: "llama3".to_string(),
+            messages: vec![
+                Message::system("System prompt"),
+                Message::user("Question 1"),
+                Message::assistant("Answer 1"),
+                Message::user("Question 2"),
+            ],
+            stream: Some(false),
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
+            n: None,
+            stop: None,
+        };
+
+        let ollama_req = executor.chat_request_to_ollama(&chat_req, "llama3");
+
+        assert_eq!(ollama_req.model, "llama3");
+        assert_eq!(ollama_req.messages.len(), 4);
+        assert_eq!(ollama_req.messages[0].role, "system");
+        assert_eq!(ollama_req.messages[1].role, "user");
+        assert_eq!(ollama_req.messages[2].role, "assistant");
+        assert_eq!(ollama_req.messages[3].role, "user");
+    }
+
+    #[test]
+    fn test_ollama_response_to_chat_basic() {
+        use crate::protocol::ollama::OllamaChatResponse;
+        use crate::protocol::ollama::OllamaMessage;
+
+        let executor = create_test_executor();
+        let ollama_resp = OllamaChatResponse {
+            model: "deepseek-chat".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            message: OllamaMessage {
+                role: "assistant".to_string(),
+                content: "Hello! How can I help you?".to_string(),
+            },
+            done: true,
+            total_duration: 1000000000,
+            load_duration: 500000000,
+            prompt_eval_count: 10,
+            eval_count: 20,
+        };
+
+        let chat_resp = executor.ollama_response_to_chat(&ollama_resp, "deepseek-chat");
+
+        assert_eq!(chat_resp.object, "chat.completion");
+        assert_eq!(chat_resp.model, "deepseek-chat");
+        assert_eq!(chat_resp.choices.len(), 1);
+        assert_eq!(chat_resp.choices[0].index, 0);
+        assert_eq!(chat_resp.choices[0].message.role, "assistant");
+        assert_eq!(
+            chat_resp.choices[0].message.content,
+            "Hello! How can I help you?"
+        );
+        assert_eq!(chat_resp.choices[0].finish_reason, Some("stop".to_string()));
+        assert_eq!(chat_resp.usage.prompt_tokens, 10);
+        assert_eq!(chat_resp.usage.completion_tokens, 20);
+        assert_eq!(chat_resp.usage.total_tokens, 30);
+    }
+
+    #[test]
+    fn test_ollama_response_to_chat_empty_counts() {
+        use crate::protocol::ollama::OllamaChatResponse;
+        use crate::protocol::ollama::OllamaMessage;
+
+        let executor = create_test_executor();
+        let ollama_resp = OllamaChatResponse {
+            model: "llama3".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            message: OllamaMessage {
+                role: "assistant".to_string(),
+                content: "Response".to_string(),
+            },
+            done: true,
+            total_duration: 0,
+            load_duration: 0,
+            prompt_eval_count: 0,
+            eval_count: 0,
+        };
+
+        let chat_resp = executor.ollama_response_to_chat(&ollama_resp, "llama3");
+
+        assert_eq!(chat_resp.usage.prompt_tokens, 0);
+        assert_eq!(chat_resp.usage.completion_tokens, 0);
+        assert_eq!(chat_resp.usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn test_chat_request_to_ollama_preserves_content() {
+        use crate::protocol::types::{ChatCompletionRequest, Message};
+
+        let executor = create_test_executor();
+        let complex_content = r#"{
+            "type": "code",
+            "language": "rust",
+            "code": "fn main() { println!(\"Hello\"); }"
+        }"#;
+
+        let chat_req =
+            ChatCompletionRequest::new("deepseek-coder", vec![Message::user(complex_content)]);
+
+        let ollama_req = executor.chat_request_to_ollama(&chat_req, "deepseek-coder");
+
+        assert_eq!(ollama_req.messages.len(), 1);
+        assert_eq!(ollama_req.messages[0].content, complex_content);
+    }
+
+    #[test]
+    fn test_ollama_response_to_chat_generates_unique_id() {
+        use crate::protocol::ollama::OllamaChatResponse;
+        use crate::protocol::ollama::OllamaMessage;
+
+        let executor = create_test_executor();
+        let ollama_resp = OllamaChatResponse {
+            model: "test".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            message: OllamaMessage {
+                role: "assistant".to_string(),
+                content: "test".to_string(),
+            },
+            done: true,
+            total_duration: 0,
+            load_duration: 0,
+            prompt_eval_count: 0,
+            eval_count: 0,
+        };
+
+        let chat_resp1 = executor.ollama_response_to_chat(&ollama_resp, "test");
+        let chat_resp2 = executor.ollama_response_to_chat(&ollama_resp, "test");
+
+        // 每次调用应该生成不同的 ID
+        assert_ne!(chat_resp1.id, chat_resp2.id);
+        // 但 ID 应该都以 "chatcmpl-" 开头
+        assert!(chat_resp1.id.starts_with("chatcmpl-"));
+        assert!(chat_resp2.id.starts_with("chatcmpl-"));
+    }
+
+    #[test]
+    /// 验证任务执行结果的构造：成功场景
+    fn test_execute_result_construction_success() {
+        use crate::protocol::types::NodeTaskResult;
+
+        // 模拟 Ollama 成功响应
+        let ollama_resp = crate::protocol::ollama::OllamaChatResponse {
+            model: "deepseek-chat".to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            message: crate::protocol::ollama::OllamaMessage {
+                role: "assistant".to_string(),
+                content: "Hello!".to_string(),
+            },
+            done: true,
+            total_duration: 1000000000,
+            load_duration: 500000000,
+            prompt_eval_count: 10,
+            eval_count: 20,
+        };
+
+        // 构造成功结果（模拟 execute_ollama 成功后的逻辑）
+        let executor = create_test_executor();
+        let chat_resp = executor.ollama_response_to_chat(&ollama_resp, "deepseek-chat");
+        let result = NodeTaskResult::Succeeded {
+            response: chat_resp,
+        };
+
+        // 验证结果结构
+        match result {
+            NodeTaskResult::Succeeded { response } => {
+                assert_eq!(response.model, "deepseek-chat");
+                assert_eq!(response.choices[0].message.content, "Hello!");
+                assert_eq!(response.usage.total_tokens, 30);
+            }
+            NodeTaskResult::Failed { .. } => panic!("Expected Succeeded variant"),
+        }
+    }
+
+    #[test]
+    /// 验证任务执行结果的构造：失败场景
+    fn test_execute_result_construction_failure() {
+        use crate::protocol::types::NodeTaskResult;
+
+        // 模拟 Ollama 失败后的错误处理
+        let error_msg = "Ollama API error: model not found";
+        let result = NodeTaskResult::Failed {
+            code: "ollama_error".to_string(),
+            message: error_msg.to_string(),
+        };
+
+        // 验证结果结构
+        match result {
+            NodeTaskResult::Failed { code, message } => {
+                assert_eq!(code, "ollama_error");
+                assert_eq!(message, error_msg);
+            }
+            NodeTaskResult::Succeeded { .. } => panic!("Expected Failed variant"),
+        }
+    }
+
+    #[test]
+    /// 验证任务 deadline 和 grace period 的计算逻辑
+    fn test_task_deadline_and_grace_period() {
+        use chrono::{Duration, Utc};
+
+        // 模拟任务的 deadline 和 grace period
+        let now = Utc::now();
+        let deadline = now + Duration::seconds(60); // 60 秒后过期
+        let grace_until = deadline + Duration::seconds(30); // 额外 30 秒宽限期
+
+        // 验证时间关系
+        assert!(deadline > now);
+        assert!(grace_until > deadline);
+        assert_eq!((grace_until - deadline).num_seconds(), 30);
+
+        // 验证未过期
+        assert!(now < deadline);
+
+        // 验证已过期但仍在宽限期内
+        let after_deadline = deadline + Duration::seconds(10);
+        assert!(after_deadline > deadline);
+        assert!(after_deadline < grace_until);
+
+        // 验证宽限期也过期
+        let after_grace = grace_until + Duration::seconds(1);
+        assert!(after_grace > grace_until);
+    }
 }

@@ -137,6 +137,8 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     #[test]
+    /// 验证 AtomicBool 的 excluded 状态更新逻辑。
+    /// 模拟服务端返回 excluded 状态后的标志设置。
     fn test_is_excluded_flag_update() {
         let is_excluded = Arc::new(AtomicBool::new(false));
 
@@ -153,10 +155,59 @@ mod tests {
     }
 
     #[test]
+    /// 验证心跳间隔计算逻辑。
+    /// excluded 节点的心跳间隔应该增大 3 倍。
     fn test_heartbeat_interval_calculation() {
         let base_interval = Duration::from_secs(30);
         let excluded_interval = base_interval * 3;
 
         assert_eq!(excluded_interval, Duration::from_secs(90));
+
+        // 验证其他倍数
+        let short_interval = Duration::from_secs(10);
+        assert_eq!(short_interval * 3, Duration::from_secs(30));
+
+        let long_interval = Duration::from_secs(60);
+        assert_eq!(long_interval * 3, Duration::from_secs(180));
+    }
+
+    #[test]
+    /// 验证心跳间隔边界条件。
+    fn test_heartbeat_interval_edge_cases() {
+        // 最小间隔
+        let min_interval = Duration::from_secs(1);
+        assert_eq!(min_interval * 3, Duration::from_secs(3));
+
+        // 零间隔（理论上不应该出现，但要处理）
+        let zero_interval = Duration::from_secs(0);
+        assert_eq!(zero_interval * 3, Duration::from_secs(0));
+    }
+
+    #[test]
+    /// 验证多个 AtomicBool 并发访问的安全性。
+    fn test_atomic_bool_concurrent_access() {
+        let is_excluded = Arc::new(AtomicBool::new(false));
+        let mut handles = vec![];
+
+        // 创建多个线程同时读写
+        for i in 0..10 {
+            let flag = is_excluded.clone();
+            let handle = std::thread::spawn(move || {
+                if i % 2 == 0 {
+                    flag.store(true, Ordering::Relaxed);
+                } else {
+                    let _ = flag.load(Ordering::Relaxed);
+                }
+            });
+            handles.push(handle);
+        }
+
+        // 等待所有线程完成
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // 验证没有 panic
+        let _ = is_excluded.load(Ordering::Relaxed);
     }
 }

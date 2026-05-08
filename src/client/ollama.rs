@@ -171,6 +171,8 @@ impl OllamaClient {
 mod tests {
     use super::*;
     use crate::protocol::types::{Message, MessageRole};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn test_client_creation() {
@@ -230,5 +232,111 @@ mod tests {
         assert_eq!(MessageRole::User.as_str(), "user");
         assert_eq!(MessageRole::Assistant.as_str(), "assistant");
         assert_eq!(MessageRole::Tool.as_str(), "tool");
+    }
+
+    #[tokio::test]
+    /// 测试 Ollama 模型列表获取成功场景
+    async fn test_list_models_success() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/api/tags"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "models": [
+                    {"name": "deepseek-chat:latest", "size": 4000000000_u64},
+                    {"name": "llama3:latest", "size": 3800000000_u64}
+                ]
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = OllamaClient::new(mock_server.uri());
+        let models = client.list_models().await.unwrap();
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0], "deepseek-chat:latest");
+        assert_eq!(models[1], "llama3:latest");
+    }
+
+    #[tokio::test]
+    /// 测试 Ollama Chat 请求成功场景
+    async fn test_chat_success() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "deepseek-chat",
+                "created_at": "2024-01-01T00:00:00Z",
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello! How can I help you?"
+                },
+                "done": true,
+                "total_duration": 1000000000,
+                "prompt_eval_count": 10,
+                "eval_count": 20
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = OllamaClient::new(mock_server.uri());
+        let request = OllamaChatRequest {
+            model: "deepseek-chat".to_string(),
+            messages: vec![OllamaMessage::new("user", "Hello")],
+            stream: false,
+        };
+
+        let response = client.chat(&request).await.unwrap();
+
+        assert_eq!(response.model, "deepseek-chat");
+        assert_eq!(response.message.role, "assistant");
+        assert_eq!(response.message.content, "Hello! How can I help you?");
+        assert!(response.done);
+        assert_eq!(response.prompt_eval_count, 10);
+        assert_eq!(response.eval_count, 20);
+    }
+
+    #[tokio::test]
+    /// 测试 Ollama Chat 请求失败场景（HTTP 500）
+    async fn test_chat_http_error() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+            .mount(&mock_server)
+            .await;
+
+        let client = OllamaClient::new(mock_server.uri());
+        let request = OllamaChatRequest {
+            model: "deepseek-chat".to_string(),
+            messages: vec![OllamaMessage::new("user", "Hello")],
+            stream: false,
+        };
+
+        let result = client.chat(&request).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    /// 测试 Ollama 未启动场景（连接失败）
+    async fn test_ollama_not_started() {
+        // 使用一个不会被监听的端口，模拟 Ollama 未启动
+        let client = OllamaClient::new("http://localhost:19999");
+
+        let result = client.list_models().await;
+        assert!(result.is_err());
+
+        // 验证错误类型是 Ollama 错误
+        match result.unwrap_err() {
+            NodeTokenError::Ollama(msg) => {
+                // 打印实际错误消息以便调试
+                println!("Actual error message: {}", msg);
+                // 只要是 Ollama 错误就认为测试通过
+                assert!(!msg.is_empty());
+            }
+            _ => panic!("Expected Ollama error"),
+        }
     }
 }

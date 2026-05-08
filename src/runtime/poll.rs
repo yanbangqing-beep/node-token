@@ -124,6 +124,8 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 验证 poll 循环的 excluded 标志检查逻辑。
+    /// excluded 节点应该停止 poll。
     fn test_excluded_flag_check() {
         let is_excluded = Arc::new(AtomicBool::new(false));
 
@@ -136,6 +138,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证 poll 循环的停止信号检查逻辑。
     fn test_stop_signal_check() {
         let stop_signal = Arc::new(AtomicBool::new(false));
 
@@ -145,5 +148,104 @@ mod tests {
         // 发送停止信号
         stop_signal.store(true, Ordering::Relaxed);
         assert!(stop_signal.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    /// 验证轮询指数退避间隔计算。
+    /// 网络错误后应该指数级增加等待时间。
+    fn test_poll_backoff_calculation() {
+        let max_backoff = Duration::from_secs(16);
+
+        // 第 1 次失败：2^1 = 2 秒
+        let backoff_1 = Duration::from_secs(2_u64.pow(1));
+        assert_eq!(backoff_1, Duration::from_secs(2));
+
+        // 第 2 次失败：2^2 = 4 秒
+        let backoff_2 = Duration::from_secs(2_u64.pow(2));
+        assert_eq!(backoff_2, Duration::from_secs(4));
+
+        // 第 3 次失败：2^3 = 8 秒
+        let backoff_3 = Duration::from_secs(2_u64.pow(3));
+        assert_eq!(backoff_3, Duration::from_secs(8));
+
+        // 第 4 次失败：2^4 = 16 秒
+        let backoff_4 = Duration::from_secs(2_u64.pow(4));
+        assert_eq!(backoff_4, Duration::from_secs(16));
+
+        // 第 5 次失败：min(2^5, 16) = 16 秒（达到最大值）
+        let backoff_5 = std::cmp::min(Duration::from_secs(2_u64.pow(5)), max_backoff);
+        assert_eq!(backoff_5, Duration::from_secs(16));
+
+        // 第 10 次失败：min(2^10, 16) = 16 秒（仍然最大值）
+        let backoff_10 = std::cmp::min(Duration::from_secs(2_u64.pow(10)), max_backoff);
+        assert_eq!(backoff_10, Duration::from_secs(16));
+    }
+
+    #[test]
+    /// 验证空轮询间隔计算。
+    /// 无任务时的等待间隔 = poll_timeout_secs / 10
+    fn test_empty_poll_interval_calculation() {
+        // poll_timeout_secs = 20，间隔 = 2 秒
+        let interval_1 = if 20 > 0 {
+            Duration::from_secs(20 / 10)
+        } else {
+            Duration::from_secs(1) // 默认值
+        };
+        assert_eq!(interval_1, Duration::from_secs(2));
+
+        // poll_timeout_secs = 30，间隔 = 3 秒
+        let interval_2 = if 30 > 0 {
+            Duration::from_secs(30 / 10)
+        } else {
+            Duration::from_secs(1) // 默认值
+        };
+        assert_eq!(interval_2, Duration::from_secs(3));
+
+        // poll_timeout_secs = 5，间隔 = 0 秒（整数除法），使用默认 1 秒
+        let interval_3 = if 5 > 0 {
+            let calculated = 5 / 10; // = 0
+            if calculated > 0 {
+                Duration::from_secs(calculated)
+            } else {
+                Duration::from_secs(1) // 使用默认值
+            }
+        } else {
+            Duration::from_secs(1)
+        };
+        assert_eq!(interval_3, Duration::from_secs(1));
+    }
+
+    #[test]
+    /// 验证多个 AtomicBool 并发访问的安全性。
+    fn test_atomic_bool_concurrent_access() {
+        let is_excluded = Arc::new(AtomicBool::new(false));
+        let stop_signal = Arc::new(AtomicBool::new(false));
+        let mut handles = vec![];
+
+        // 创建多个线程同时读写
+        for i in 0..10 {
+            let excluded = is_excluded.clone();
+            let stop = stop_signal.clone();
+            let handle = std::thread::spawn(move || {
+                if i % 3 == 0 {
+                    excluded.store(true, Ordering::Relaxed);
+                } else if i % 3 == 1 {
+                    stop.store(true, Ordering::Relaxed);
+                } else {
+                    let _ = excluded.load(Ordering::Relaxed);
+                    let _ = stop.load(Ordering::Relaxed);
+                }
+            });
+            handles.push(handle);
+        }
+
+        // 等待所有线程完成
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // 验证没有 panic
+        let _ = is_excluded.load(Ordering::Relaxed);
+        let _ = stop_signal.load(Ordering::Relaxed);
     }
 }

@@ -44,3 +44,6 @@ nix = { version = "0.27", features = ["fs"] }
 # 测试依赖
 [dev-dependencies]
 tempfile = "3"
+mockall = "0.11"
+tokio-test = "0.4"
+wiremock = "0.5"

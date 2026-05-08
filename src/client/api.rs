@@ -281,6 +281,8 @@ impl KeyComputeClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
     async fn test_client_creation() {
@@ -312,5 +314,252 @@ mod tests {
         client.set_session_token("test-token".to_string()).await;
         let token = client.require_session_token().await.unwrap();
         assert_eq!(*token, "test-token");
+    }
+
+    #[tokio::test]
+    /// 测试节点注册成功场景
+    async fn test_register_success() {
+        let mock_server = MockServer::start().await;
+
+        // Mock 注册响应
+        Mock::given(method("POST"))
+            .and(path("/node/v1/register"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "protocol_version": "node.v1",
+                "node_id": "00000000-0000-0000-0000-000000000001",
+                "session_id": "00000000-0000-0000-0000-000000000002",
+                "session_token": "test-session-token",
+                "heartbeat_interval_secs": 30,
+                "poll_timeout_secs": 10
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = KeyComputeClient::new(mock_server.uri());
+        let request = crate::protocol::types::NodeRegisterRequest {
+            protocol_version: "node.v1".to_string(),
+            client_instance_id: "test-instance".to_string(),
+            display_name: "Test Node".to_string(),
+            registration_token: "test-token".to_string(),
+            capabilities: crate::protocol::types::NodeCapabilities {
+                runtime: "ollama".to_string(),
+                models: vec![crate::protocol::types::NodeModelCapability {
+                    model: "deepseek-chat".to_string(),
+                }],
+            },
+        };
+
+        let response = client.register(&request).await.unwrap();
+        assert_eq!(
+            response.node_id.to_string(),
+            "00000000-0000-0000-0000-000000000001"
+        );
+        assert_eq!(response.session_token, "test-session-token");
+        assert_eq!(response.heartbeat_interval_secs, 30);
+        assert_eq!(response.poll_timeout_secs, 10);
+    }
+
+    #[tokio::test]
+    /// 测试节点注册失败场景（HTTP 500）
+    async fn test_register_http_error() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/node/v1/register"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+            .mount(&mock_server)
+            .await;
+
+        let client = KeyComputeClient::new(mock_server.uri());
+        let request = crate::protocol::types::NodeRegisterRequest {
+            protocol_version: "node.v1".to_string(),
+            client_instance_id: "test-instance".to_string(),
+            display_name: "Test Node".to_string(),
+            registration_token: "test-token".to_string(),
+            capabilities: crate::protocol::types::NodeCapabilities {
+                runtime: "ollama".to_string(),
+                models: vec![],
+            },
+        };
+
+        let result = client.register(&request).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    /// 测试心跳成功场景
+    async fn test_heartbeat_success() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/node/v1/heartbeat"))
+            .and(header("Authorization", "Bearer test-session-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "protocol_version": "node.v1",
+                "accepted": true,
+                "node_status": "online",
+                "server_failure_count": 0,
+                "failure_threshold": 3
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client =
+            KeyComputeClient::new_with_token(mock_server.uri(), "test-session-token".to_string());
+        let request = crate::protocol::types::NodeHeartbeatRequest {
+            protocol_version: "node.v1".to_string(),
+            node_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            accepted_models: vec!["deepseek-chat".to_string()],
+        };
+
+        let response = client.heartbeat(&request).await.unwrap();
+        assert!(response.accepted);
+        assert_eq!(response.node_status, "online");
+        assert_eq!(response.server_failure_count, 0);
+        assert_eq!(response.failure_threshold, 3);
+    }
+
+    #[tokio::test]
+    /// 测试心跳缺少 token 时返回错误
+    async fn test_heartbeat_missing_token() {
+        let client = KeyComputeClient::new("http://localhost:3000");
+        let request = crate::protocol::types::NodeHeartbeatRequest {
+            protocol_version: "node.v1".to_string(),
+            node_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            accepted_models: vec![],
+        };
+
+        let result = client.heartbeat(&request).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    /// 测试轮询成功场景（有任务）
+    async fn test_poll_with_task() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/node/v1/tasks/poll"))
+            .and(header("Authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "protocol_version": "node.v1",
+                "task": {
+                    "task_id": "00000000-0000-0000-0000-000000000003",
+                    "lease_id": "00000000-0000-0000-0000-000000000004",
+                    "model": "deepseek-chat",
+                    "deadline_unix_ms": 9999999999999_i64,
+                    "complete_grace_until_unix_ms": 9999999999999_i64,
+                    "payload": {
+                        "request_id": "00000000-0000-0000-0000-000000000005",
+                        "chat": {
+                            "model": "deepseek-chat",
+                            "messages": [{"role": "user", "content": "Hello"}],
+                            "stream": false
+                        }
+                    }
+                },
+                "retry_after_ms": null
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = KeyComputeClient::new_with_token(mock_server.uri(), "test-token".to_string());
+        let request = crate::protocol::types::NodePollRequest {
+            protocol_version: "node.v1".to_string(),
+            node_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+        };
+
+        let response = client.poll(&request).await.unwrap();
+        assert!(response.task.is_some());
+        let task = response.task.unwrap();
+        assert_eq!(task.model, "deepseek-chat");
+    }
+
+    #[tokio::test]
+    /// 测试轮询成功场景（无任务）
+    async fn test_poll_no_task() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/node/v1/tasks/poll"))
+            .and(header("Authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "protocol_version": "node.v1",
+                "task": null,
+                "retry_after_ms": 1000
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = KeyComputeClient::new_with_token(mock_server.uri(), "test-token".to_string());
+        let request = crate::protocol::types::NodePollRequest {
+            protocol_version: "node.v1".to_string(),
+            node_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+        };
+
+        let response = client.poll(&request).await.unwrap();
+        assert!(response.task.is_none());
+        assert_eq!(response.retry_after_ms, Some(1000));
+    }
+
+    #[tokio::test]
+    /// 测试任务完成成功场景
+    async fn test_complete_success() {
+        let mock_server = MockServer::start().await;
+        let task_id = uuid::Uuid::new_v4();
+
+        Mock::given(method("POST"))
+            .and(path(format!("/node/v1/tasks/{}/complete", task_id)))
+            .and(header("Authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "action": "succeeded",
+                "task_status": "succeeded",
+                "node_status": "online",
+                "server_failure_count": 0,
+                "failure_threshold": 3
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = KeyComputeClient::new_with_token(mock_server.uri(), "test-token".to_string());
+        let request = crate::protocol::types::NodeTaskCompleteRequest {
+            protocol_version: "node.v1".to_string(),
+            node_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            task_id,
+            lease_id: uuid::Uuid::new_v4(),
+            result: crate::protocol::types::NodeTaskResult::Succeeded {
+                response: crate::protocol::types::ChatCompletionResponse {
+                    id: "resp-001".to_string(),
+                    object: "chat.completion".to_string(),
+                    created: 1234567890,
+                    model: "deepseek-chat".to_string(),
+                    choices: vec![crate::protocol::types::CompletionChoice {
+                        index: 0,
+                        message: crate::protocol::types::MessageContent {
+                            role: "assistant".to_string(),
+                            content: "Hello!".to_string(),
+                        },
+                        finish_reason: Some("stop".to_string()),
+                    }],
+                    usage: crate::protocol::types::Usage {
+                        prompt_tokens: 10,
+                        completion_tokens: 20,
+                        total_tokens: 30,
+                    },
+                },
+            },
+        };
+
+        let response = client.complete(task_id, &request).await.unwrap();
+        assert_eq!(
+            response.action,
+            crate::protocol::types::NodeTaskCompleteAction::Succeeded
+        );
+        assert_eq!(response.node_status, "online");
     }
 }
