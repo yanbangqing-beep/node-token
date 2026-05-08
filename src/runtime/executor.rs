@@ -374,6 +374,7 @@ mod tests {
                 runtime: "ollama".to_string(),
                 models: vec![],
             },
+            poll_timeout_secs: 30,
         };
 
         TaskExecutor::new(client, ollama_client, session)

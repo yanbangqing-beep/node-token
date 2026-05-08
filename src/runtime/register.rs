@@ -81,6 +81,7 @@ pub async fn register_node(
         session_id: resp.session_id,
         session_token: resp.session_token.clone(),
         capabilities: req.capabilities.clone(), // 使用注册请求中的 capabilities
+        poll_timeout_secs: resp.poll_timeout_secs, // 保存服务端返回的 poll 超时
     };
 
     storage.save_session(&session)?;
@@ -161,6 +162,7 @@ mod tests {
                     model: "test-model".to_string(),
                 }],
             },
+            poll_timeout_secs: 30,
         };
 
         storage.save_session(&session).unwrap();

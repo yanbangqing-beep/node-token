@@ -22,6 +22,8 @@ pub struct SessionData {
     pub session_token: String,
     /// 节点能力（注册时上报的模型列表）
     pub capabilities: NodeCapabilities,
+    /// 服务端轮询超时（秒），用于计算无任务时的等待间隔
+    pub poll_timeout_secs: u64,
 }
 
 /// 本地存储管理器
@@ -205,6 +207,7 @@ mod tests {
                     },
                 ],
             },
+            poll_timeout_secs: 30,
         }
     }
 

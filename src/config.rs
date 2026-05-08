@@ -31,6 +31,11 @@ pub struct NodeTokenConfig {
     #[serde(default = "default_heartbeat_interval")]
     pub heartbeat_interval_secs: u64,
 
+    /// Excluded 节点 poll 检查间隔（秒），默认 30（与心跳间隔一致）
+    /// 节点被 excluded 后，poll 循环定期检查是否恢复
+    #[serde(default = "default_excluded_poll_check_interval")]
+    pub excluded_poll_check_interval_secs: u64,
+
     /// 本地数据目录，默认 ~/.local/share/node-token
     #[serde(default = "default_data_dir")]
     pub data_dir: Option<String>,
@@ -41,6 +46,10 @@ fn default_ollama_url() -> String {
 }
 
 fn default_heartbeat_interval() -> u64 {
+    30
+}
+
+fn default_excluded_poll_check_interval() -> u64 {
     30
 }
 
@@ -78,9 +87,10 @@ pub fn load_config() -> Result<NodeTokenConfig> {
         .set_default("server_url", "http://localhost:3000")?
         .set_default("registration_token", "")?
         .set_default("client_instance_id", "")?
-        .set_default("display_name", "My PC Node")?
+        .set_default("display_name", "My KeyComputeC Node")?
         .set_default("ollama_url", "http://localhost:11434")?
         .set_default("heartbeat_interval_secs", 30)?
+        .set_default("excluded_poll_check_interval_secs", 30)?
         // 从配置文件加载
         .add_source(File::with_name(&config_path).required(false))
         // 从环境变量加载（优先级最高）
@@ -127,11 +137,13 @@ mod tests {
             display_name: "Test Node".to_string(),
             ollama_url: default_ollama_url(),
             heartbeat_interval_secs: default_heartbeat_interval(),
+            excluded_poll_check_interval_secs: default_excluded_poll_check_interval(),
             data_dir: None,
         };
 
         assert_eq!(config.ollama_url, "http://localhost:11434");
         assert_eq!(config.heartbeat_interval_secs, 30);
+        assert_eq!(config.excluded_poll_check_interval_secs, 30);
     }
 
     #[test]
@@ -143,6 +155,7 @@ mod tests {
             display_name: "Test Node".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
+            excluded_poll_check_interval_secs: 30,
             data_dir: Some("/tmp/test-node-token".to_string()),
         };
 

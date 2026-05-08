@@ -20,12 +20,15 @@ use crate::storage::SessionData;
 /// - `executor`: 任务执行器
 /// - `is_excluded`: 节点排除标志（由 heartbeat 循环更新）
 /// - `stop_signal`: 退出信号
+/// - `excluded_check_interval`: Excluded 节点 poll 检查间隔
+/// - `poll_timeout_secs`: 服务端轮询超时（秒），用于计算无任务时的等待间隔
 ///
 /// # 行为
 /// - 定期调用 poll API 领取任务
 /// - 如果节点被 excluded，停止 poll
 /// - 服务端返回 retry_after_ms 时等待指定时间
 /// - 网络错误指数退避（AGENTS.md 第 724 行）
+/// - 无任务时等待间隔 = poll_timeout_secs / 10（默认 1 秒）
 #[allow(dead_code)] // 在阶段五使用
 pub async fn poll_loop(
     client: &KeyComputeClient,
@@ -33,6 +36,8 @@ pub async fn poll_loop(
     executor: Arc<TaskExecutor>,
     is_excluded: Arc<AtomicBool>,
     stop_signal: Arc<AtomicBool>,
+    excluded_check_interval: Duration,
+    poll_timeout_secs: u64,
 ) {
     info!("Starting poll loop");
 
@@ -40,12 +45,25 @@ pub async fn poll_loop(
     let mut consecutive_failures: u32 = 0;
     let max_backoff = Duration::from_secs(16);
 
+    // 计算无任务时的等待间隔：poll_timeout_secs / 10，默认 1 秒
+    let empty_poll_interval = if poll_timeout_secs > 0 {
+        Duration::from_secs(poll_timeout_secs / 10)
+    } else {
+        Duration::from_secs(1) // 默认 1 秒
+    };
+
+    info!(
+        "Poll empty interval: {}s (poll_timeout_secs={})",
+        empty_poll_interval.as_secs(),
+        poll_timeout_secs
+    );
+
     while !stop_signal.load(Ordering::Relaxed) {
         // 如果节点被 excluded，停止 poll
         if is_excluded.load(Ordering::Relaxed) {
             info!("Node excluded, stopping poll (will continue heartbeat only)");
-            // 每 60 秒检查一次是否恢复
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            // 按配置的检查间隔等待后，检查是否恢复
+            tokio::time::sleep(excluded_check_interval).await;
             continue;
         }
 
@@ -76,8 +94,8 @@ pub async fn poll_loop(
                     debug!("No task available, retry_after={}ms", retry_ms);
                     tokio::time::sleep(Duration::from_millis(retry_ms)).await;
                 } else {
-                    // 没有任务也没有 retry_after，短暂等待后继续
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    // 没有任务也没有 retry_after，使用计算的间隔等待后继续
+                    tokio::time::sleep(empty_poll_interval).await;
                 }
             }
             Err(e) => {

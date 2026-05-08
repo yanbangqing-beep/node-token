@@ -8,6 +8,8 @@ use crate::protocol::types::{
     NodeRegisterRequest, NodeRegisterResponse, NodeTaskCompleteRequest, NodeTaskCompleteResponse,
 };
 use reqwest::Client;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 /// KeyCompute API 客户端
@@ -17,8 +19,8 @@ pub struct KeyComputeClient {
     base_url: String,
     /// HTTP 客户端（连接池）
     http_client: Client,
-    /// Session token（注册后设置）
-    session_token: Option<String>,
+    /// Session token（注册后设置，使用 RwLock 支持内部可变性）
+    session_token: Arc<RwLock<Option<String>>>,
 }
 
 impl KeyComputeClient {
@@ -34,20 +36,38 @@ impl KeyComputeClient {
         Self {
             base_url,
             http_client,
-            session_token: None,
+            session_token: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    /// 创建新的 KeyCompute 客户端（带初始 session token）
+    #[allow(dead_code)] // 在后续阶段使用
+    pub fn new_with_token(base_url: impl Into<String>, token: String) -> Self {
+        let base_url = base_url.into();
+        let http_client = Client::builder()
+            .timeout(std::time::Duration::from_secs(300)) // 5 分钟超时（支持长轮询）
+            .build()
+            .expect("Failed to create HTTP client");
+
+        Self {
+            base_url,
+            http_client,
+            session_token: Arc::new(RwLock::new(Some(token))),
         }
     }
 
     /// 设置 session token（注册后调用）
     #[allow(dead_code)] // 在后续阶段使用
-    pub fn set_session_token(&mut self, token: String) {
-        self.session_token = Some(token);
+    pub async fn set_session_token(&self, token: String) {
+        let mut token_guard = self.session_token.write().await;
+        *token_guard = Some(token);
     }
 
     /// 获取 session token
     #[allow(dead_code)] // 在后续阶段使用
-    pub fn session_token(&self) -> Option<&str> {
-        self.session_token.as_deref()
+    pub async fn get_session_token(&self) -> Option<String> {
+        let token_guard = self.session_token.read().await;
+        token_guard.clone()
     }
 
     /// 节点注册
@@ -114,7 +134,7 @@ impl KeyComputeClient {
             .json(request)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.require_session_token()?),
+                format!("Bearer {}", self.require_session_token().await?),
             )
             .send()
             .await
@@ -160,7 +180,7 @@ impl KeyComputeClient {
             .json(request)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.require_session_token()?),
+                format!("Bearer {}", self.require_session_token().await?),
             )
             .send()
             .await
@@ -211,7 +231,7 @@ impl KeyComputeClient {
             .json(request)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.require_session_token()?),
+                format!("Bearer {}", self.require_session_token().await?),
             )
             .send()
             .await
@@ -249,9 +269,11 @@ impl KeyComputeClient {
     }
 
     /// 获取 session token，如果不存在则返回错误
-    fn require_session_token(&self) -> Result<&str, NodeTokenError> {
-        self.session_token
-            .as_deref()
+    async fn require_session_token(&self) -> Result<Arc<String>, NodeTokenError> {
+        let token_guard = self.session_token.read().await;
+        token_guard
+            .clone()
+            .map(Arc::new)
             .ok_or_else(|| NodeTokenError::InvalidSession)
     }
 }
@@ -260,32 +282,35 @@ impl KeyComputeClient {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_client_creation() {
+    #[tokio::test]
+    async fn test_client_creation() {
         let client = KeyComputeClient::new("http://localhost:3000");
         assert_eq!(client.base_url, "http://localhost:3000");
-        assert!(client.session_token.is_none());
+        assert!(client.get_session_token().await.is_none());
     }
 
-    #[test]
-    fn test_set_session_token() {
-        let mut client = KeyComputeClient::new("http://localhost:3000");
-        assert!(client.session_token.is_none());
+    #[tokio::test]
+    async fn test_set_session_token() {
+        let client = KeyComputeClient::new("http://localhost:3000");
+        assert!(client.get_session_token().await.is_none());
 
-        client.set_session_token("test-token".to_string());
-        assert_eq!(client.session_token(), Some("test-token"));
+        client.set_session_token("test-token".to_string()).await;
+        assert_eq!(
+            client.get_session_token().await,
+            Some("test-token".to_string())
+        );
     }
 
-    #[test]
-    fn test_require_session_token() {
-        let mut client = KeyComputeClient::new("http://localhost:3000");
+    #[tokio::test]
+    async fn test_require_session_token() {
+        let client = KeyComputeClient::new("http://localhost:3000");
 
         // 未设置 token 时应该返回错误
-        assert!(client.require_session_token().is_err());
+        assert!(client.require_session_token().await.is_err());
 
         // 设置 token 后应该返回成功
-        client.set_session_token("test-token".to_string());
-        assert!(client.require_session_token().is_ok());
-        assert_eq!(client.require_session_token().unwrap(), "test-token");
+        client.set_session_token("test-token".to_string()).await;
+        let token = client.require_session_token().await.unwrap();
+        assert_eq!(*token, "test-token");
     }
 }

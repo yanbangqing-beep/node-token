@@ -42,7 +42,8 @@ pub async fn heartbeat_loop(
     let mut current_interval = base_interval;
     let mut interval = tokio::time::interval(current_interval);
 
-    // 跳过第一次立即触发，等待一个完整间隔
+    // 第一次立即触发，不等待完整间隔
+    // 这样 main.rs 中的初始等待（2 秒）后，is_excluded 已被第一次心跳更新
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     info!(
