@@ -60,3 +60,20 @@ mockall = "0.11"
 tokio-test = "0.4"
 wiremock = "0.5"
 futures = "0.3"
+
+# 基准测试依赖
+[dev-dependencies.criterion]
+version = "0.5"
+features = ["async_tokio"]
+
+[[bench]]
+name = "protocol_serialization"
+harness = false
+
+[[bench]]
+name = "http_client"
+harness = false
+
+[[bench]]
+name = "storage_operations"
+harness = false
