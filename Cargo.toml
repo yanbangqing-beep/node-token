@@ -1,9 +1,21 @@
 [package]
 name = "node-token"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "KeyCompute node-token client for personal PC nodes"
 license = "MIT"
+
+[workspace]
+
+# 库配置
+[lib]
+name = "node_token"
+path = "src/lib.rs"
+
+# 二进制配置
+[[bin]]
+name = "node-token"
+path = "src/main.rs"
 
 [dependencies]
 # 异步运行时
@@ -47,3 +59,4 @@ tempfile = "3"
 mockall = "0.11"
 tokio-test = "0.4"
 wiremock = "0.5"
+futures = "0.3"

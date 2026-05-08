@@ -88,10 +88,7 @@ pub async fn register_node(
 
     info!(
         "Registration successful: node_id={}, session_id={}, heartbeat_interval={}s, poll_timeout={}s",
-        resp.node_id,
-        resp.session_id,
-        resp.heartbeat_interval_secs,
-        resp.poll_timeout_secs
+        resp.node_id, resp.session_id, resp.heartbeat_interval_secs, resp.poll_timeout_secs
     );
 
     // 注意：日志中不得输出 session_token 明文

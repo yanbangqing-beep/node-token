@@ -2,15 +2,8 @@
 //!
 //! 运行在个人 PC 上，负责连接本机 Ollama、主动轮询任务并提交结果。
 
-mod client;
-mod config;
-mod error;
-mod protocol;
-mod runtime;
-mod storage;
-
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -18,9 +11,12 @@ use tracing::info;
 #[allow(unused_imports)] // 仅在不支持的平台上使用
 use tracing::warn;
 
-use crate::client::{KeyComputeClient, OllamaClient};
-use crate::runtime::{heartbeat_loop, poll_loop, register_node, try_load_session, TaskExecutor};
-use crate::storage::LocalStorage;
+use node_token::client::{KeyComputeClient, OllamaClient};
+use node_token::load_config;
+use node_token::runtime::{
+    TaskExecutor, heartbeat_loop, poll_loop, register_node, try_load_session,
+};
+use node_token::storage::LocalStorage;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,7 +31,7 @@ async fn main() -> Result<()> {
     info!("node-token starting");
 
     // 2. 加载配置
-    let config = config::load_config()?;
+    let config = load_config()?;
     info!("Configuration loaded successfully");
     info!("Server URL: {}", config.server_url);
     info!("Client instance ID: {}", config.client_instance_id);
@@ -146,7 +142,7 @@ async fn main() -> Result<()> {
 async fn wait_for_signal() {
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
 
         let mut sigterm =
             signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");

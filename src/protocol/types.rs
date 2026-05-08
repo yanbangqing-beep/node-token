@@ -531,9 +531,11 @@ mod tests {
         assert_eq!(parsed.node_id, node_id);
         assert_eq!(parsed.session_id, session_id);
         assert_eq!(parsed.accepted_models.len(), 2);
-        assert!(parsed
-            .accepted_models
-            .contains(&"deepseek-chat".to_string()));
+        assert!(
+            parsed
+                .accepted_models
+                .contains(&"deepseek-chat".to_string())
+        );
         assert!(parsed.accepted_models.contains(&"llama3".to_string()));
     }
 

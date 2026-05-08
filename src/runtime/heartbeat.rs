@@ -1,9 +1,9 @@
+use std::sync::Arc;
 /// 心跳循环逻辑
 ///
 /// 定期向服务端发送心跳，上报当前可接受模型快照，
 /// 镜像服务端返回的节点状态和失败计数。
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 
 use tracing::{error, info, warn};
@@ -100,8 +100,10 @@ pub async fn heartbeat_loop(
                     interval = tokio::time::interval(current_interval);
                     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 } else if !now_excluded && was_excluded {
-                    info!("Node status changed from excluded to {}, restoring normal heartbeat interval", 
-                          resp.node_status);
+                    info!(
+                        "Node status changed from excluded to {}, restoring normal heartbeat interval",
+                        resp.node_status
+                    );
                     // 恢复为正常心跳间隔
                     current_interval = base_interval;
                     interval = tokio::time::interval(current_interval);

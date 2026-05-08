@@ -29,8 +29,10 @@ impl Drop for EnvGuard {
     fn drop(&mut self) {
         for (key, old_value) in &self.vars {
             match old_value {
-                Some(v) => std::env::set_var(key, v),
-                None => std::env::remove_var(key),
+                // SAFETY: 测试结束后安全地恢复环境变量
+                Some(v) => unsafe { std::env::set_var(key, v) },
+                // SAFETY: 测试结束后安全地清理环境变量
+                None => unsafe { std::env::remove_var(key) },
             }
         }
     }
@@ -212,13 +214,19 @@ excluded_poll_check_interval_secs = 60
 
         // 使用 EnvGuard 确保测试后清理环境变量
         let _guard = EnvGuard::new(&["NODE_TOKEN_CONFIG"]);
-        std::env::set_var("NODE_TOKEN_CONFIG", config_path.to_str().unwrap());
+        // SAFETY: 测试中安全地设置环境变量
+        unsafe {
+            std::env::set_var("NODE_TOKEN_CONFIG", config_path.to_str().unwrap());
+        }
 
         // 清除可能干扰的其他 NODE_TOKEN_ 环境变量
-        std::env::remove_var("NODE_TOKEN__SERVER_URL");
-        std::env::remove_var("NODE_TOKEN__REGISTRATION_TOKEN");
-        std::env::remove_var("NODE_TOKEN__CLIENT_INSTANCE_ID");
-        std::env::remove_var("NODE_TOKEN__DISPLAY_NAME");
+        // SAFETY: 测试中安全地使用，不会影响其他线程
+        unsafe {
+            std::env::remove_var("NODE_TOKEN__SERVER_URL");
+            std::env::remove_var("NODE_TOKEN__REGISTRATION_TOKEN");
+            std::env::remove_var("NODE_TOKEN__CLIENT_INSTANCE_ID");
+            std::env::remove_var("NODE_TOKEN__DISPLAY_NAME");
+        }
 
         // 加载配置
         let config = load_config().unwrap();

@@ -1,8 +1,8 @@
+use std::sync::Arc;
 /// 轮询循环逻辑
 ///
 /// 定期从服务端领取任务，提交到执行器执行。
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 
 use tracing::{debug, error, info};

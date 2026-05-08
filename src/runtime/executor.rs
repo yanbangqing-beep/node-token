@@ -5,8 +5,8 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use tokio_retry::strategy::ExponentialBackoff;
 use tokio_retry::Retry;
+use tokio_retry::strategy::ExponentialBackoff;
 use tracing::{error, info, warn};
 
 use crate::client::{KeyComputeClient, OllamaClient};
