@@ -11,7 +11,7 @@ pub struct OllamaChatRequest {
     pub model: String,
     /// 消息列表
     pub messages: Vec<OllamaMessage>,
-    /// 流式输出（固定为 false）
+    /// 流式输出
     pub stream: bool,
 }
 
