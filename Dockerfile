@@ -31,8 +31,8 @@ RUN cargo build --release 2>/dev/null || true
 COPY src/ src/
 COPY benches/ benches/
 
-# 重新构建实际应用（touch 触发重新编译）
-RUN touch src/main.rs && cargo build --release
+# 重新构建实际应用（touch 所有源文件触发重新编译）
+RUN find src -type f -exec touch {} + && cargo build --release
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 阶段 2：runtime — 最小化运行时镜像
