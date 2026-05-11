@@ -118,7 +118,6 @@ docker run -d \
   -v node_token_data:/data \
   -e NODE_TOKEN__SERVER_URL="http://keycompute-server:3000" \
   -e NODE_TOKEN__REGISTRATION_TOKEN="رمز-التسجيل-الخاص-بك" \
-  -e NODE_TOKEN__CLIENT_INSTANCE_ID="عقدتي-001" \
   -e NODE_TOKEN__DISPLAY_NAME="عقدة حاسوبي" \
   -e NODE_TOKEN__OLLAMA_URL="http://localhost:11434" \
   node-token
@@ -134,7 +133,6 @@ docker run -d \
 |:---|:---|:---|:---:|
 | `server_url` | عنوان خادم KeyCompute | `http://localhost:3000` | ✅ |
 | `registration_token` | رمز التسجيل من مسؤول KeyCompute | — | ✅ |
-| `client_instance_id` | معرّف فريد لهذه العقدة (يستمر عبر إعادة التشغيل) | — | ✅ |
 | `display_name` | اسم مقروء للعقدة | — | ✅ |
 | `ollama_url` | نقطة نهاية API المحلية لـ Ollama | `http://localhost:11434` | ⚪ |
 | `heartbeat_interval_secs` | فاصل نبضات القلب بالثواني | `30` | ⚪ |

@@ -7,10 +7,6 @@ server_url = "http://localhost:3000"
 # 注册 token（从 KeyCompute 配置获取，必需）
 registration_token = "change-me-node-registration-token"
 
-# 客户端实例 ID（建议固定以便重启复用，必需）
-# 可以使用 hostname 或自定义标识
-client_instance_id = "my-pc-node-001"
-
 # 节点显示名称（必需）
 display_name = "My KeyCompute Node"
 

@@ -118,7 +118,6 @@ docker run -d \
   -v node_token_data:/data \
   -e NODE_TOKEN__SERVER_URL="http://keycompute-server:3000" \
   -e NODE_TOKEN__REGISTRATION_TOKEN="your-registration-token" \
-  -e NODE_TOKEN__CLIENT_INSTANCE_ID="my-node-001" \
   -e NODE_TOKEN__DISPLAY_NAME="我的 PC 節點" \
   -e NODE_TOKEN__OLLAMA_URL="http://localhost:11434" \
   node-token
@@ -134,7 +133,6 @@ docker run -d \
 |:---|:---|:---|:---:|
 | `server_url` | KeyCompute 伺服器 URL | `http://localhost:3000` | ✅ |
 | `registration_token` | KeyCompute 註冊 token | — | ✅ |
-| `client_instance_id` | 節點唯一識別碼（重啟後沿用） | — | ✅ |
 | `display_name` | 節點顯示名稱 | — | ✅ |
 | `ollama_url` | 本地 Ollama API 位址 | `http://localhost:11434` | ⚪ |
 | `heartbeat_interval_secs` | 心跳間隔（秒） | `30` | ⚪ |

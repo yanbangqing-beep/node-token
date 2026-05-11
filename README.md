@@ -118,7 +118,6 @@ docker run -d \
   -v node_token_data:/data \
   -e NODE_TOKEN__SERVER_URL="http://keycompute-server:3000" \
   -e NODE_TOKEN__REGISTRATION_TOKEN="your-registration-token" \
-  -e NODE_TOKEN__CLIENT_INSTANCE_ID="my-node-001" \
   -e NODE_TOKEN__DISPLAY_NAME="My PC Node" \
   -e NODE_TOKEN__OLLAMA_URL="http://localhost:11434" \
   node-token
@@ -134,7 +133,6 @@ Configuration is loaded from `config.toml` (or a path set via the `NODE_TOKEN_CO
 |:---|:---|:---|:---:|
 | `server_url` | KeyCompute server URL | `http://localhost:3000` | ✅ |
 | `registration_token` | Registration token from KeyCompute admin | — | ✅ |
-| `client_instance_id` | Unique ID for this node (persisted across restarts) | — | ✅ |
 | `display_name` | Human-readable node name | — | ✅ |
 | `ollama_url` | Local Ollama API endpoint | `http://localhost:11434` | ⚪ |
 | `heartbeat_interval_secs` | Heartbeat interval in seconds | `30` | ⚪ |
