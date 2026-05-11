@@ -57,13 +57,63 @@ pub async fn heartbeat_loop(
     while !stop_signal.load(Ordering::Relaxed) {
         interval.tick().await;
 
-        // 获取当前 Ollama 模型
-        let models = match ollama_client.list_models().await {
-            Ok(m) => m,
-            Err(e) => {
-                warn!("Failed to list Ollama models for heartbeat: {}", e);
-                // Ollama 不可用，跳过本次心跳，下次重试
-                continue;
+        // 获取上报的模型列表
+        // 设计意图：
+        // 1. 正常情况下，使用注册时的 capabilities（保证是注册能力的子集）
+        // 2. 如果注册时为空（启动时机问题），则重新扫描 Ollama（容错处理）
+        let registered_models: Vec<String> = session
+            .capabilities
+            .models
+            .iter()
+            .map(|m| m.model.clone())
+            .collect();
+
+        let models = if registered_models.is_empty() {
+            // 注册时未扫描到模型，尝试重新扫描（可能是启动时 Ollama 未就绪）
+            match ollama_client.list_models().await {
+                Ok(current_models) => {
+                    let current_models: Vec<String> = current_models;
+                    if !current_models.is_empty() {
+                        info!(
+                            "Registration had empty models, using current Ollama models: {:?}",
+                            current_models
+                        );
+                    }
+                    current_models
+                }
+                Err(e) => {
+                    warn!("Failed to list Ollama models for heartbeat: {}", e);
+                    // Ollama 不可用，跳过本次心跳，下次重试
+                    continue;
+                }
+            }
+        } else {
+            // 正常情况：使用注册时的 capabilities
+            // 但需要过滤掉当前 Ollama 中不存在的模型（模型被删除的情况）
+            match ollama_client.list_models().await {
+                Ok(current_models) => {
+                    let current_models: Vec<String> = current_models;
+                    // 取注册模型和当前模型的交集
+                    let active_models: Vec<String> = registered_models
+                        .into_iter()
+                        .filter(|m| current_models.contains(m))
+                        .collect();
+                    
+                    if active_models.len() != session.capabilities.models.len() {
+                        warn!(
+                            "Some registered models no longer available in Ollama. Registered: {:?}, Active: {:?}",
+                            session.capabilities.models.iter().map(|m| &m.model).collect::<Vec<_>>(),
+                            active_models
+                        );
+                    }
+                    
+                    active_models
+                }
+                Err(e) => {
+                    warn!("Failed to list Ollama models for heartbeat: {}", e);
+                    // Ollama 不可用，使用注册时的模型（保守策略）
+                    registered_models
+                }
             }
         };
 
