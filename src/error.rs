@@ -43,6 +43,10 @@ pub enum NodeTokenError {
     /// Session 无效或丢失
     #[error("Invalid or missing session")]
     InvalidSession,
+
+    /// 注册失败（如未找到模型）
+    #[error("Registration failed: {0}")]
+    RegistrationFailed(String),
 }
 
 // 手动实现 PartialEq（因为某些变体包含不支持 PartialEq 的类型）
@@ -65,6 +69,7 @@ impl PartialEq for NodeTokenError {
             (NodeTokenError::TaskExecution(m1), NodeTokenError::TaskExecution(m2)) => m1 == m2,
             (NodeTokenError::NodeExcluded, NodeTokenError::NodeExcluded) => true,
             (NodeTokenError::InvalidSession, NodeTokenError::InvalidSession) => true,
+            (NodeTokenError::RegistrationFailed(m1), NodeTokenError::RegistrationFailed(m2)) => m1 == m2,
             // Config 和 Network 包含不支持 PartialEq 的类型，总是返回 false
             _ => false,
         }
