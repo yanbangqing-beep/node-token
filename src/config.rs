@@ -97,14 +97,18 @@ fn default_data_dir() -> Option<String> {
 /// 生成客户端实例 ID
 ///
 /// # 规则
-/// - 添加 `node-` 前缀以明确标识节点实例
-/// - 使用主机名作为实例标识（物理机为实际主机名，容器为容器 ID）
+/// - 物理机：使用 `node-{hostname}` 前缀（如 `node-server-01`）
+/// - Docker 容器：使用 `container-{hostname}` 前缀（如 `container-636b25ce7983`）
 /// - 如果主机名为空或获取失败，使用 `node-unknown`
 /// - 保证每台服务器有唯一的实例 ID
 ///
+/// # 检测逻辑
+/// - 如果存在 `/.dockerenv` 文件或 `/run/.containerenv` 文件，判定为容器环境
+/// - 否则判定为物理机/虚拟机环境
+///
 /// # 示例
-/// - 物理机: `node-prod-server-01`
-/// - Docker: `node-636b25ce7983`
+/// - 物理机: `node-server-01`
+/// - Docker: `container-636b25ce7983`
 /// - Fallback: `node-unknown`
 pub fn generate_client_instance_id() -> String {
     let host = hostname::get()
@@ -113,7 +117,13 @@ pub fn generate_client_instance_id() -> String {
         .filter(|h| !h.is_empty())
         .unwrap_or_else(|| "unknown".to_string());
 
-    format!("node-{}", host)
+    // 检测是否在容器环境中
+    let is_container = std::path::Path::new("/.dockerenv").exists()
+        || std::path::Path::new("/run/.containerenv").exists();
+
+    let prefix = if is_container { "container" } else { "node" };
+
+    format!("{}-{}", prefix, host)
 }
 
 impl NodeTokenConfig {
@@ -430,16 +440,27 @@ max_concurrent_tasks = 4
         // 测试自动生成实例 ID
         let instance_id = generate_client_instance_id();
 
-        // 应该以 "node-" 前缀开头
-        assert!(instance_id.starts_with("node-"));
+        // 应该以 "node-" 或 "container-" 前缀开头
+        assert!(
+            instance_id.starts_with("node-") || instance_id.starts_with("container-"),
+            "Instance ID should start with 'node-' or 'container-', got: {}",
+            instance_id
+        );
 
-        // 应该不为空（至少有 "node-" 前缀）
+        // 应该不为空（至少有前缀）
         assert!(instance_id.len() > 5);
 
         // 不应该包含空格
         assert!(!instance_id.contains(char::is_whitespace));
 
-        // 应该是 "node-unknown" 或 "node-{hostname}"
-        assert!(instance_id == "node-unknown" || instance_id.len() > 5);
+        // 验证格式正确性
+        let parts: Vec<&str> = instance_id.splitn(2, '-').collect();
+        assert_eq!(parts.len(), 2, "Should have exactly one hyphen");
+        assert!(
+            parts[0] == "node" || parts[0] == "container",
+            "Prefix should be 'node' or 'container', got: {}",
+            parts[0]
+        );
+        assert!(!parts[1].is_empty(), "Host part should not be empty");
     }
 }
