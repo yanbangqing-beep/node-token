@@ -69,7 +69,9 @@ impl PartialEq for NodeTokenError {
             (NodeTokenError::TaskExecution(m1), NodeTokenError::TaskExecution(m2)) => m1 == m2,
             (NodeTokenError::NodeExcluded, NodeTokenError::NodeExcluded) => true,
             (NodeTokenError::InvalidSession, NodeTokenError::InvalidSession) => true,
-            (NodeTokenError::RegistrationFailed(m1), NodeTokenError::RegistrationFailed(m2)) => m1 == m2,
+            (NodeTokenError::RegistrationFailed(m1), NodeTokenError::RegistrationFailed(m2)) => {
+                m1 == m2
+            }
             // Config 和 Network 包含不支持 PartialEq 的类型，总是返回 false
             _ => false,
         }

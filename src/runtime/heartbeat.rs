@@ -98,7 +98,7 @@ pub async fn heartbeat_loop(
                         .into_iter()
                         .filter(|m| current_models.contains(m))
                         .collect();
-                    
+
                     // 检查是否有模型被删除
                     if active_models.len() != session.capabilities.models.len() {
                         if active_models.is_empty() {
@@ -107,19 +107,29 @@ pub async fn heartbeat_loop(
                                 "All registered models have been removed from Ollama. \
                                  Node will not receive any tasks. \
                                  Registered: {:?}, Please pull models back.",
-                                session.capabilities.models.iter().map(|m| &m.model).collect::<Vec<_>>()
+                                session
+                                    .capabilities
+                                    .models
+                                    .iter()
+                                    .map(|m| &m.model)
+                                    .collect::<Vec<_>>()
                             );
                         } else {
                             // 部分模型被删除
                             warn!(
                                 "Some registered models no longer available in Ollama. \
                                  Registered: {:?}, Active: {:?}",
-                                session.capabilities.models.iter().map(|m| &m.model).collect::<Vec<_>>(),
+                                session
+                                    .capabilities
+                                    .models
+                                    .iter()
+                                    .map(|m| &m.model)
+                                    .collect::<Vec<_>>(),
                                 active_models
                             );
                         }
                     }
-                    
+
                     active_models
                 }
                 Err(e) => {

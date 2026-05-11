@@ -41,7 +41,7 @@ pub async fn register_node(
 
     // 1. 等待 Ollama 模型就绪（循环扫描，直到有模型或超时）
     let models = wait_for_models_ready(ollama_client).await?;
-    
+
     info!("Found {} Ollama models: {:?}", models.len(), models);
 
     // 3. 构建注册请求
@@ -145,14 +145,20 @@ async fn wait_for_models_ready(ollama_client: &crate::client::OllamaClient) -> R
     for attempt in 1..=MAX_RETRIES {
         match ollama_client.list_models().await {
             Ok(models) if !models.is_empty() => {
-                info!("Ollama models ready after {} attempts: {:?}", attempt, models);
+                info!(
+                    "Ollama models ready after {} attempts: {:?}",
+                    attempt, models
+                );
                 return Ok(models);
             }
             Ok(_) => {
-                if attempt % 12 == 0 { // 每 60 秒打印一次日志
+                if attempt % 12 == 0 {
+                    // 每 60 秒打印一次日志
                     warn!(
                         "No Ollama models found (attempt {}/{}), retrying in {}s...",
-                        attempt, MAX_RETRIES, RETRY_INTERVAL.as_secs()
+                        attempt,
+                        MAX_RETRIES,
+                        RETRY_INTERVAL.as_secs()
                     );
                 }
             }
@@ -169,12 +175,10 @@ async fn wait_for_models_ready(ollama_client: &crate::client::OllamaClient) -> R
         tokio::time::sleep(RETRY_INTERVAL).await;
     }
 
-    Err(crate::error::NodeTokenError::RegistrationFailed(
-        format!(
-            "Timeout waiting for Ollama models after {} seconds. Please ensure Ollama has at least one model pulled.",
-            (MAX_RETRIES as u64) * RETRY_INTERVAL.as_secs()
-        ),
-    ))
+    Err(crate::error::NodeTokenError::RegistrationFailed(format!(
+        "Timeout waiting for Ollama models after {} seconds. Please ensure Ollama has at least one model pulled.",
+        (MAX_RETRIES as u64) * RETRY_INTERVAL.as_secs()
+    )))
 }
 
 #[cfg(test)]
