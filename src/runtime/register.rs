@@ -46,8 +46,11 @@ pub async fn register_node(
 
     // 3. 构建注册请求
     let client_instance_id = crate::config::generate_client_instance_id();
-    info!("Using client instance ID: {} (auto-generated from hostname)", client_instance_id);
-    
+    info!(
+        "Using client instance ID: {} (auto-generated from hostname)",
+        client_instance_id
+    );
+
     let req = NodeRegisterRequest {
         protocol_version: "node.v1".to_string(),
         client_instance_id,

@@ -97,15 +97,23 @@ fn default_data_dir() -> Option<String> {
 /// 生成客户端实例 ID
 ///
 /// # 规则
-/// - 使用主机名作为实例 ID
-/// - 如果主机名为空或获取失败，使用 "unknown-node"
+/// - 添加 `node-` 前缀以明确标识节点实例
+/// - 使用主机名作为实例标识（物理机为实际主机名，容器为容器 ID）
+/// - 如果主机名为空或获取失败，使用 `node-unknown`
 /// - 保证每台服务器有唯一的实例 ID
+///
+/// # 示例
+/// - 物理机: `node-prod-server-01`
+/// - Docker: `node-636b25ce7983`
+/// - Fallback: `node-unknown`
 pub fn generate_client_instance_id() -> String {
-    hostname::get()
+    let host = hostname::get()
         .ok()
         .and_then(|h| h.into_string().ok())
         .filter(|h| !h.is_empty())
-        .unwrap_or_else(|| "unknown-node".to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    format!("node-{}", host)
 }
 
 impl NodeTokenConfig {
@@ -421,11 +429,17 @@ max_concurrent_tasks = 4
     fn test_generate_client_instance_id() {
         // 测试自动生成实例 ID
         let instance_id = generate_client_instance_id();
-        
-        // 应该不为空
-        assert!(!instance_id.is_empty());
-        
-        // 应该是有效的主机名或 fallback 值
-        assert!(instance_id == "unknown-node" || !instance_id.contains(char::is_whitespace));
+
+        // 应该以 "node-" 前缀开头
+        assert!(instance_id.starts_with("node-"));
+
+        // 应该不为空（至少有 "node-" 前缀）
+        assert!(instance_id.len() > 5);
+
+        // 不应该包含空格
+        assert!(!instance_id.contains(char::is_whitespace));
+
+        // 应该是 "node-unknown" 或 "node-{hostname}"
+        assert!(instance_id == "node-unknown" || instance_id.len() > 5);
     }
 }
