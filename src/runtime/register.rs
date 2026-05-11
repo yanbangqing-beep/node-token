@@ -45,9 +45,12 @@ pub async fn register_node(
     info!("Found {} Ollama models: {:?}", models.len(), models);
 
     // 3. 构建注册请求
+    let client_instance_id = crate::config::generate_client_instance_id();
+    info!("Using client instance ID: {} (auto-generated from hostname)", client_instance_id);
+    
     let req = NodeRegisterRequest {
         protocol_version: "node.v1".to_string(),
-        client_instance_id: config.client_instance_id.clone(),
+        client_instance_id,
         display_name: config.display_name.clone(),
         registration_token: config.registration_token.clone(),
         capabilities: NodeCapabilities {
@@ -235,7 +238,6 @@ mod tests {
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance-001".to_string(),
             display_name: "Test Node".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -250,9 +252,10 @@ mod tests {
         ];
 
         // 构建注册请求（模拟 register_node 中的逻辑）
+        let client_instance_id = crate::config::generate_client_instance_id();
         let req = NodeRegisterRequest {
             protocol_version: "node.v1".to_string(),
-            client_instance_id: config.client_instance_id.clone(),
+            client_instance_id,
             display_name: config.display_name.clone(),
             registration_token: config.registration_token.clone(),
             capabilities: NodeCapabilities {
@@ -266,7 +269,7 @@ mod tests {
 
         // 验证请求字段
         assert_eq!(req.protocol_version, "node.v1");
-        assert_eq!(req.client_instance_id, "test-instance-001");
+        assert!(!req.client_instance_id.is_empty()); // 自动生成的主机名
         assert_eq!(req.display_name, "Test Node");
         assert_eq!(req.registration_token, "test-token");
         assert_eq!(req.capabilities.runtime, "ollama");
@@ -327,7 +330,6 @@ mod tests {
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance".to_string(),
             display_name: "Test Node".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -338,9 +340,10 @@ mod tests {
 
         let models: Vec<String> = vec![];
 
+        let client_instance_id = crate::config::generate_client_instance_id();
         let req = NodeRegisterRequest {
             protocol_version: "node.v1".to_string(),
-            client_instance_id: config.client_instance_id.clone(),
+            client_instance_id,
             display_name: config.display_name.clone(),
             registration_token: config.registration_token.clone(),
             capabilities: NodeCapabilities {

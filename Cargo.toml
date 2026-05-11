@@ -46,6 +46,9 @@ config = "0.13"
 # 本地数据目录
 dirs = "5"
 
+# 主机名获取
+hostname = "0.4"
+
 # 重试策略
 tokio-retry = "0.3"
 

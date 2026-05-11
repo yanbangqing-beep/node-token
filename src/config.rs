@@ -48,9 +48,6 @@ pub struct NodeTokenConfig {
     /// 注册 token（从 KeyCompute 配置获取）
     pub registration_token: String,
 
-    /// 客户端实例 ID（建议固定以便重启复用）
-    pub client_instance_id: String,
-
     /// 节点显示名称
     pub display_name: String,
 
@@ -97,6 +94,20 @@ fn default_data_dir() -> Option<String> {
     dirs::data_local_dir().map(|d| d.join("node-token").to_string_lossy().to_string())
 }
 
+/// 生成客户端实例 ID
+///
+/// # 规则
+/// - 使用主机名作为实例 ID
+/// - 如果主机名为空或获取失败，使用 "unknown-node"
+/// - 保证每台服务器有唯一的实例 ID
+pub fn generate_client_instance_id() -> String {
+    hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| "unknown-node".to_string())
+}
+
 impl NodeTokenConfig {
     /// 获取数据目录路径
     #[allow(dead_code)] // 在后续阶段使用
@@ -126,7 +137,6 @@ pub fn load_config() -> Result<NodeTokenConfig> {
         // 默认值
         .set_default("server_url", "http://localhost:3000")?
         .set_default("registration_token", "")?
-        .set_default("client_instance_id", "")?
         .set_default("display_name", "My KeyCompute Node")?
         .set_default("ollama_url", "http://localhost:11434")?
         .set_default("heartbeat_interval_secs", 30)?
@@ -154,9 +164,6 @@ pub fn load_config() -> Result<NodeTokenConfig> {
     if node_config.registration_token.is_empty() {
         anyhow::bail!("registration_token is required");
     }
-    if node_config.client_instance_id.is_empty() {
-        anyhow::bail!("client_instance_id is required");
-    }
     if node_config.display_name.is_empty() {
         anyhow::bail!("display_name is required");
     }
@@ -177,7 +184,6 @@ mod tests {
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance".to_string(),
             display_name: "Test Node".to_string(),
             ollama_url: default_ollama_url(),
             heartbeat_interval_secs: default_heartbeat_interval(),
@@ -197,7 +203,6 @@ mod tests {
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance".to_string(),
             display_name: "Test Node".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -220,7 +225,6 @@ mod tests {
         let config_content = r#"
 server_url = "http://example.com:3000"
 registration_token = "my-secret-token"
-client_instance_id = "my-pc-001"
 display_name = "My PC Node"
 ollama_url = "http://localhost:11434"
 heartbeat_interval_secs = 60
@@ -241,7 +245,6 @@ max_concurrent_tasks = 4
         unsafe {
             std::env::remove_var("NODE_TOKEN__SERVER_URL");
             std::env::remove_var("NODE_TOKEN__REGISTRATION_TOKEN");
-            std::env::remove_var("NODE_TOKEN__CLIENT_INSTANCE_ID");
             std::env::remove_var("NODE_TOKEN__DISPLAY_NAME");
         }
 
@@ -250,7 +253,6 @@ max_concurrent_tasks = 4
 
         assert_eq!(config.server_url, "http://example.com:3000");
         assert_eq!(config.registration_token, "my-secret-token");
-        assert_eq!(config.client_instance_id, "my-pc-001");
         assert_eq!(config.display_name, "My PC Node");
         assert_eq!(config.ollama_url, "http://localhost:11434");
         assert_eq!(config.heartbeat_interval_secs, 60);
@@ -263,7 +265,6 @@ max_concurrent_tasks = 4
         let config = NodeTokenConfig {
             server_url: "https://keycompute.example.com".to_string(),
             registration_token: "custom-token-123".to_string(),
-            client_instance_id: "custom-instance-456".to_string(),
             display_name: "Custom Node".to_string(),
             ollama_url: "http://192.168.1.100:11434".to_string(),
             heartbeat_interval_secs: 45,
@@ -274,7 +275,6 @@ max_concurrent_tasks = 4
 
         assert_eq!(config.server_url, "https://keycompute.example.com");
         assert_eq!(config.registration_token, "custom-token-123");
-        assert_eq!(config.client_instance_id, "custom-instance-456");
         assert_eq!(config.display_name, "Custom Node");
         assert_eq!(config.ollama_url, "http://192.168.1.100:11434");
         assert_eq!(config.heartbeat_interval_secs, 45);
@@ -288,7 +288,6 @@ max_concurrent_tasks = 4
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance".to_string(),
             display_name: "Test Node".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -310,7 +309,6 @@ max_concurrent_tasks = 4
         let config = NodeTokenConfig {
             server_url: "".to_string(), // 空值
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance".to_string(),
             display_name: "Test Node".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -329,7 +327,6 @@ max_concurrent_tasks = 4
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "".to_string(), // 空值
-            client_instance_id: "test-instance".to_string(),
             display_name: "Test Node".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -343,32 +340,11 @@ max_concurrent_tasks = 4
     }
 
     #[test]
-    fn test_config_validation_empty_client_instance_id() {
-        // 直接测试验证逻辑，而不是通过 load_config()
-        // 因为 load_config() 有默认值，会覆盖空字符串
-        let config = NodeTokenConfig {
-            server_url: "http://localhost:3000".to_string(),
-            registration_token: "test-token".to_string(),
-            client_instance_id: "".to_string(), // 空值
-            display_name: "Test Node".to_string(),
-            ollama_url: "http://localhost:11434".to_string(),
-            heartbeat_interval_secs: 30,
-            excluded_poll_check_interval_secs: 30,
-            max_concurrent_tasks: 2,
-            data_dir: None,
-        };
-
-        // 验证空值检测逻辑
-        assert!(config.client_instance_id.is_empty());
-    }
-
-    #[test]
     fn test_config_validation_empty_display_name() {
         // 直接测试验证逻辑
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance".to_string(),
             display_name: "".to_string(), // 空值
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -390,7 +366,6 @@ max_concurrent_tasks = 4
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance".to_string(),
             display_name: "🚀 My Node 节点".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -407,7 +382,6 @@ max_concurrent_tasks = 4
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token-with-special-chars!@#$%".to_string(),
-            client_instance_id: "test-instance_123.456".to_string(),
             display_name: "Node \"Test\" (Production)".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -428,7 +402,6 @@ max_concurrent_tasks = 4
         let config = NodeTokenConfig {
             server_url: "http://localhost:3000".to_string(),
             registration_token: "test-token".to_string(),
-            client_instance_id: "test-instance".to_string(),
             display_name: "Test Node".to_string(),
             ollama_url: "http://localhost:11434".to_string(),
             heartbeat_interval_secs: 30,
@@ -442,5 +415,17 @@ max_concurrent_tasks = 4
             config.data_dir_path(),
             PathBuf::from("/custom/path/to/data")
         );
+    }
+
+    #[test]
+    fn test_generate_client_instance_id() {
+        // 测试自动生成实例 ID
+        let instance_id = generate_client_instance_id();
+        
+        // 应该不为空
+        assert!(!instance_id.is_empty());
+        
+        // 应该是有效的主机名或 fallback 值
+        assert!(instance_id == "unknown-node" || !instance_id.contains(char::is_whitespace));
     }
 }

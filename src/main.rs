@@ -32,9 +32,10 @@ async fn main() -> Result<()> {
 
     // 2. 加载配置
     let config = load_config()?;
+    let client_instance_id = node_token::config::generate_client_instance_id();
     info!("Configuration loaded successfully");
     info!("Server URL: {}", config.server_url);
-    info!("Client instance ID: {}", config.client_instance_id);
+    info!("Client instance ID: {} (auto-generated from hostname)", client_instance_id);
     info!("Display name: {}", config.display_name);
     info!("Ollama URL: {}", config.ollama_url);
 
