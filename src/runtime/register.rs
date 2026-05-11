@@ -124,6 +124,59 @@ pub fn try_load_session(storage: &LocalStorage) -> Result<Option<SessionData>> {
     }
 }
 
+/// 等待 Ollama 模型就绪
+///
+/// # 逻辑
+/// - 循环扫描 Ollama 模型，直到找到至少一个模型
+/// - 每 5 秒重试一次，最多重试 60 次（总计 5 分钟）
+/// - 超时后返回错误
+///
+/// # 设计意图
+/// - Ollama 服务启动后，模型可能还在下载中
+/// - 此函数确保注册时 capabilities_json 包含真实模型
+/// - 避免“僵尸节点”（注册成功但无模型）
+async fn wait_for_models_ready(ollama_client: &crate::client::OllamaClient) -> Result<Vec<String>> {
+    use std::time::Duration;
+    use tracing::warn;
+
+    const MAX_RETRIES: u32 = 60; // 最多重试 60 次
+    const RETRY_INTERVAL: Duration = Duration::from_secs(5); // 每 5 秒重试一次
+
+    for attempt in 1..=MAX_RETRIES {
+        match ollama_client.list_models().await {
+            Ok(models) if !models.is_empty() => {
+                info!("Ollama models ready after {} attempts: {:?}", attempt, models);
+                return Ok(models);
+            }
+            Ok(_) => {
+                if attempt % 12 == 0 { // 每 60 秒打印一次日志
+                    warn!(
+                        "No Ollama models found (attempt {}/{}), retrying in {}s...",
+                        attempt, MAX_RETRIES, RETRY_INTERVAL.as_secs()
+                    );
+                }
+            }
+            Err(e) => {
+                if attempt % 12 == 0 {
+                    warn!(
+                        "Failed to connect to Ollama (attempt {}/{}): {}, retrying...",
+                        attempt, MAX_RETRIES, e
+                    );
+                }
+            }
+        }
+
+        tokio::time::sleep(RETRY_INTERVAL).await;
+    }
+
+    Err(crate::error::NodeTokenError::RegistrationFailed(
+        format!(
+            "Timeout waiting for Ollama models after {} seconds. Please ensure Ollama has at least one model pulled.",
+            (MAX_RETRIES as u64) * RETRY_INTERVAL.as_secs()
+        ),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,57 +350,4 @@ mod tests {
 
         assert_eq!(req.capabilities.models.len(), 0);
     }
-}
-
-/// 等待 Ollama 模型就绪
-///
-/// # 逻辑
-/// - 循环扫描 Ollama 模型，直到找到至少一个模型
-/// - 每 5 秒重试一次，最多重试 60 次（总计 5 分钟）
-/// - 超时后返回错误
-///
-/// # 设计意图
-/// - Ollama 服务启动后，模型可能还在下载中
-/// - 此函数确保注册时 capabilities_json 包含真实模型
-/// - 避免“僵尸节点”（注册成功但无模型）
-async fn wait_for_models_ready(ollama_client: &crate::client::OllamaClient) -> Result<Vec<String>> {
-    use std::time::Duration;
-    use tracing::warn;
-
-    const MAX_RETRIES: u32 = 60; // 最多重试 60 次
-    const RETRY_INTERVAL: Duration = Duration::from_secs(5); // 每 5 秒重试一次
-
-    for attempt in 1..=MAX_RETRIES {
-        match ollama_client.list_models().await {
-            Ok(models) if !models.is_empty() => {
-                info!("Ollama models ready after {} attempts: {:?}", attempt, models);
-                return Ok(models);
-            }
-            Ok(_) => {
-                if attempt % 12 == 0 { // 每 60 秒打印一次日志
-                    warn!(
-                        "No Ollama models found (attempt {}/{}), retrying in {}s...",
-                        attempt, MAX_RETRIES, RETRY_INTERVAL.as_secs()
-                    );
-                }
-            }
-            Err(e) => {
-                if attempt % 12 == 0 {
-                    warn!(
-                        "Failed to connect to Ollama (attempt {}/{}): {}, retrying...",
-                        attempt, MAX_RETRIES, e
-                    );
-                }
-            }
-        }
-
-        tokio::time::sleep(RETRY_INTERVAL).await;
-    }
-
-    Err(crate::error::NodeTokenError::RegistrationFailed(
-        format!(
-            "Timeout waiting for Ollama models after {} seconds. Please ensure Ollama has at least one model pulled.",
-            (MAX_RETRIES as u64) * RETRY_INTERVAL.as_secs()
-        ),
-    ).into())
 }
